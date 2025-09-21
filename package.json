@@ -1,0 +1,38 @@
+{
+  "name": "bytebridge",
+  "version": "1.0.0",
+  "description": "bytebridge",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "webpack --config webpack.config.js",
+    "build:main": "tsc -p tsconfig.main.json",
+    "watch": "webpack --watch --config webpack.config.js",
+    "start": "npm run build && electron .",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "server": "HOST=localhost PORT=1234 y-websocket"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/electron": "^1.6.12",
+    "@types/node": "^24.5.2",
+    "copy-webpack-plugin": "^13.0.1",
+    "css-loader": "^7.1.2",
+    "electron": "^38.1.2",
+    "style-loader": "^4.0.0",
+    "ts-loader": "^9.5.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2",
+    "webpack": "^5.101.3",
+    "webpack-cli": "^6.0.1"
+  },
+  "type": "module",
+  "dependencies": {
+    "@y/websocket-server": "^0.1.1",
+    "monaco-editor": "^0.53.0",
+    "y-monaco": "^0.1.6",
+    "y-websocket": "^3.0.0",
+    "yjs": "^13.6.27"
+  }
+}

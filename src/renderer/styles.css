@@ -1,0 +1,10 @@
+body {
+  margin: 0;
+  font-family: sans-serif;
+}
+
+#editor {
+  width: 100%;
+  height: 100vh !important;
+  border: none !important;
+}
