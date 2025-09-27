@@ -1,4 +1,5 @@
 import 'monaco-editor';
+import { initializeEditor } from './editor/index.js';
 
 self.MonacoEnvironment = {
   getWorkerUrl: function (moduleId, label) {
@@ -18,7 +19,4 @@ self.MonacoEnvironment = {
   },
 };
 
-import './editor.js';
-import './presence.js';
-
-console.log('Renderer loaded');
+initializeEditor();
