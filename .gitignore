@@ -2,3 +2,4 @@ node_modules
 /dist
 /dist-es
 esbuild.config.js
+.DS_Store
