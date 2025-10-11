@@ -19,7 +19,7 @@ export class PresenceManager {
 
     states.forEach(([clientId, state]) => {
       if (
-        clientId !== awareness.clientID &&
+        clientId !== awareness?.clientID &&
         state.user &&
         state.cursor &&
         state.user.color
@@ -71,7 +71,7 @@ export class PresenceManager {
     awareness: Awareness,
     remoteCursorName: HTMLParagraphElement
   ) {
-    awareness.setLocalStateField('user', {
+    awareness?.setLocalStateField('user', {
       name: 'User ' + Math.floor(Math.random() * 100),
       color: '#' + Math.floor(Math.random() * 16777215).toString(16),
     });
@@ -79,7 +79,7 @@ export class PresenceManager {
     editor.onDidChangeCursorPosition((e) => {
       const position = editor.getPosition();
       if (position) {
-        awareness.setLocalStateField('cursor', {
+        awareness?.setLocalStateField('cursor', {
           line: position.lineNumber,
           column: position.column,
         });
@@ -87,10 +87,10 @@ export class PresenceManager {
     });
 
     editor.onKeyUp(() => {
-      awareness.setLocalStateField('editing', true);
+      awareness?.setLocalStateField('editing', true);
       setTimeout(() => {
         remoteCursorName.textContent = '';
-        awareness.setLocalStateField('editing', false);
+        awareness?.setLocalStateField('editing', false);
       }, 1000);
     });
   }

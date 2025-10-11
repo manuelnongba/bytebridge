@@ -1,17 +1,17 @@
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 
-export function setupLanguageSelect(
+export function setupLanguage(
   languages: { id: string; name: string }[],
   languageSelect: HTMLElement,
   editor: monaco.editor.IStandaloneCodeEditor
 ) {
   languages.forEach((lang) => {
     const option = document.createElement('option');
+
     option.value = lang.id;
     option.textContent = lang.name;
-    if (lang.id === 'javascript') {
-      option.selected = true;
-    }
+    if (lang.id === 'javascript') option.selected = true;
+
     languageSelect.appendChild(option);
   });
 

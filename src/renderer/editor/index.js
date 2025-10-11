@@ -1,13 +1,11 @@
-import * as Y from 'yjs';
-import { WebsocketProvider } from 'y-websocket';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import { MonacoBinding } from 'y-monaco';
-import { WEBSOCKET_URL, ROOM_ID, EDITOR_CONFIG } from './config.ts';
-import { setupLanguageSelect } from './language.ts';
+
+import { EDITOR_CONFIG } from './config.ts';
+import { setupLanguage } from './language.ts';
 import { PresenceManager } from './presence.ts';
 
-export function initializeEditor() {
-  const ydoc = new Y.Doc();
+export function initializeEditor(provider, ydoc) {
   const yText = ydoc.getText('monaco');
 
   const supportedLanguages = monaco.languages.getLanguages().map((lang) => ({
@@ -15,7 +13,6 @@ export function initializeEditor() {
     name: lang.aliases?.[0] || lang.id,
   }));
 
-  const provider = new WebsocketProvider(WEBSOCKET_URL, ROOM_ID, ydoc);
   const editor = monaco.editor.create(
     document.getElementById('editor'),
     EDITOR_CONFIG
@@ -24,21 +21,21 @@ export function initializeEditor() {
   const languageSelect = document.getElementById('language-select');
   const remoteCursorName = document.getElementById('remote-cursor-name');
 
-  setupLanguageSelect(supportedLanguages, languageSelect, editor);
+  setupLanguage(supportedLanguages, languageSelect, editor);
 
   const presenceManager = new PresenceManager(editor);
-  presenceManager.setupAwareness(editor, provider.awareness, remoteCursorName);
+  presenceManager.setupAwareness(editor, provider?.awareness, remoteCursorName);
 
-  provider.awareness.on('change', () => {
+  provider?.awareness.on('change', () => {
     presenceManager.updateCursors(
-      Array.from(provider.awareness.getStates()),
-      provider.awareness,
+      Array.from(provider?.awareness.getStates()),
+      provider?.awareness,
       remoteCursorName
     );
   });
 
   const model = editor.getModel();
-  new MonacoBinding(yText, model, new Set([editor]), provider.awareness);
+  new MonacoBinding(yText, model, new Set([editor]), provider?.awareness);
 
   return editor;
 }
