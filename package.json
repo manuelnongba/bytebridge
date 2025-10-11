@@ -3,13 +3,34 @@
   "version": "1.0.0",
   "description": "bytebridge",
   "main": "dist/main/main.js",
+  "build": {
+    "appId": "com.example.myapp",
+    "productName": "MyApp",
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "protocols": [
+        {
+          "name": "MyApp Protocol",
+          "schemes": [
+            "myapp-dev"
+          ]
+        }
+      ]
+    }
+  },
   "scripts": {
-    "build": "webpack --config webpack.config.js",
+    "build": "webpack --config webpack.config.js && npm run build:main",
     "build:main": "tsc -p tsconfig.main.json",
     "watch": "webpack --watch --config webpack.config.js",
     "start": "npm run build && electron .",
+    "dev": "electron .",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "server": "HOST=localhost PORT=1234 y-websocket"
+    "server": "HOST=localhost PORT=1234 y-websocket",
+    "dist": "npm run build && electron-builder"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +41,7 @@
     "copy-webpack-plugin": "^13.0.1",
     "css-loader": "^7.1.2",
     "electron": "^38.1.2",
+    "electron-builder": "^26.0.12",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.4",
     "ts-node": "^10.9.2",
