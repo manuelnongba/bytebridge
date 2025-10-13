@@ -69,10 +69,11 @@ export class PresenceManager {
   setupAwareness(
     editor: monaco.editor.IStandaloneCodeEditor,
     awareness: Awareness,
-    remoteCursorName: HTMLParagraphElement
+    remoteCursorName: HTMLParagraphElement,
+    name: string
   ) {
     awareness?.setLocalStateField('user', {
-      name: 'User ' + Math.floor(Math.random() * 100),
+      name: name,
       color: '#' + Math.floor(Math.random() * 16777215).toString(16),
     });
 

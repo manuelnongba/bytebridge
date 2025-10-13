@@ -63,38 +63,41 @@ ipcMain.handle('clipboard:copy', async (_event, text: string) => {
 app.on('ready', () => {
   createWindow();
 
-  // app.setAsDefaultProtocolClient('myapp-dev');
+  if (process.env.NODE_ENV !== 'development')
+    app.setAsDefaultProtocolClient('myapp-dev');
 
   if (deeplinkingUrl) {
     win?.webContents.send('deeplink', deeplinkingUrl);
   }
 });
 
-// // macOS
-// app.on('open-url', (event, url) => {
-//   console.log('open-url', url);
+// macOS
+if (process.env.NODE_ENV !== 'development') {
+  app.on('open-url', (event, url) => {
+    console.log('open-url', url);
 
-//   deeplinkingUrl = url;
-//   win?.webContents.send('deeplink', url);
-// });
+    deeplinkingUrl = url;
+    win?.webContents.send('deeplink', url);
+  });
 
-// // Windows/Linux
-// if (!app.requestSingleInstanceLock()) {
-//   app.quit();
-// } else {
-//   app.on('second-instance', (event, argv) => {
-//     // argv includes the deep link as last param
-//     const deeplink = argv.find((arg) => arg.startsWith('myapp://'));
-//     if (deeplink) {
-//       deeplinkingUrl = deeplink;
-//       win?.webContents.send('deeplink', deeplink);
-//     }
-//     if (win) {
-//       if (win.isMinimized()) win.restore();
-//       win.focus();
-//     }
-//   });
-// }
+  // Windows/Linux
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+  } else {
+    app.on('second-instance', (event, argv) => {
+      // argv includes the deep link as last param
+      const deeplink = argv.find((arg) => arg.startsWith('myapp://'));
+      if (deeplink) {
+        deeplinkingUrl = deeplink;
+        win?.webContents.send('deeplink', deeplink);
+      }
+      if (win) {
+        if (win.isMinimized()) win.restore();
+        win.focus();
+      }
+    });
+  }
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

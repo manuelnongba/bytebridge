@@ -1,8 +1,6 @@
 import 'monaco-editor';
 import { initializeEditor } from './editor/index.js';
-import { joinRoom } from './editor/config.ts';
-
-let yProvider;
+import { joinRoom } from './collaboration/connection.ts';
 
 self.MonacoEnvironment = {
   getWorkerUrl: function (moduleId, label) {
@@ -21,6 +19,26 @@ self.MonacoEnvironment = {
     return './editor.worker.js';
   },
 };
+
+const nameModal = document.getElementById('name-modal');
+const nameInput = document.getElementById('name-input');
+const joinButton = document.getElementById('join-button');
+const editorSection = document.querySelector('section');
+
+async function startEditing(roomId, name) {
+  const { provider, ydoc } = joinRoom(roomId);
+
+  await new Promise((resolve) => {
+    provider.once('status', (event) => {
+      if (event.status === 'connected') resolve();
+    });
+  });
+
+  nameModal.style.display = 'none';
+  editorSection.style.display = 'block';
+
+  initializeEditor(provider, ydoc, name);
+}
 
 function copyInviteLink() {
   const roomId =
@@ -43,18 +61,36 @@ window.api.onDeepLink(async (url) => {
 
   if (!roomId) return;
 
-  const { provider, ydoc } = joinRoom(roomId);
+  // Show modal to enter name
+  nameModal.style.display = 'flex';
 
-  // Wait for provider connection
-  await new Promise((resolve) => {
-    provider.once('status', (event) => {
-      if (event.status === 'connected') resolve();
-    });
-  });
-
-  initializeEditor(provider, ydoc);
+  joinButton.onclick = () => {
+    const name = nameInput.value;
+    if (name) {
+      localStorage.setItem('username', name);
+      startEditing(roomId, name);
+    }
+  };
 });
 
-const { provider, ydoc } = joinRoom(1);
+joinButton.addEventListener('click', () => {
+  const name = nameInput.value;
+  if (name) {
+    localStorage.setItem('username', name);
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room') || 'default-room';
+    startEditing(roomId, name);
+  }
+});
 
-initializeEditor(provider, ydoc);
+document.addEventListener('DOMContentLoaded', () => {
+  const savedName = localStorage.getItem('username');
+  const urlParams = new URLSearchParams(window.location.search);
+  const roomIdFromUrl = urlParams.get('room');
+
+  if (savedName && !roomIdFromUrl) {
+    startEditing('default-room', savedName);
+  } else {
+    nameModal.style.display = 'flex';
+  }
+});

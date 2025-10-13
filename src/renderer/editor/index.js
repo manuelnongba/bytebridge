@@ -1,11 +1,11 @@
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import { MonacoBinding } from 'y-monaco';
 
-import { EDITOR_CONFIG } from './config.ts';
-import { setupLanguage } from './language.ts';
-import { PresenceManager } from './presence.ts';
+import { EDITOR_CONFIG } from './config/index.ts';
+import { setupLanguage } from './config/language-features.ts';
+import { PresenceManager } from '../collaboration/presence.ts';
 
-export function initializeEditor(provider, ydoc) {
+export function initializeEditor(provider, ydoc, name) {
   const yText = ydoc.getText('monaco');
 
   const supportedLanguages = monaco.languages.getLanguages().map((lang) => ({
@@ -24,7 +24,12 @@ export function initializeEditor(provider, ydoc) {
   setupLanguage(supportedLanguages, languageSelect, editor);
 
   const presenceManager = new PresenceManager(editor);
-  presenceManager.setupAwareness(editor, provider?.awareness, remoteCursorName);
+  presenceManager.setupAwareness(
+    editor,
+    provider?.awareness,
+    remoteCursorName,
+    name
+  );
 
   provider?.awareness.on('change', () => {
     presenceManager.updateCursors(

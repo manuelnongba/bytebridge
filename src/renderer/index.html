@@ -7,7 +7,14 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <section>
+    <div id="name-modal" class="modal">
+      <div class="modal-content">
+        <h2>Enter Your Name</h2>
+        <input type="text" id="name-input" placeholder="Your name" />
+        <button id="join-button">Join</button>
+      </div>
+    </div>
+    <section style="display: none">
       <select id="language-select" class="language-selector"></select>
       <p id="remote-cursor-name" class="remote-cursor-name-selector"></p>
       <div id="editor" style="height: 90vh; border: 1px solid #ccc"></div>
