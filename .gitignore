@@ -1,0 +1,30 @@
+# vcpkg local installation
+vcpkg/
+
+# Build directories
+build/
+cmake-build-*/
+
+# IDE files
+.idea/
+.vscode/
+*.user
+
+# Compiled files
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+
+# macOS
+.DS_Store
+*.app/
+
+# Qt generated
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+
+SETUP_GUIDE.md

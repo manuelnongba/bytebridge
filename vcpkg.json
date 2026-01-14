@@ -1,0 +1,19 @@
+{
+  "name": "bytebridge",
+  "version": "1.0.0",
+  "description": "ByteBridge - A collaborative code editor",
+  "homepage": "https://github.com/bytebridge/bytebridge",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "qt6-base",
+      "version>=": "6.5.0"
+    },
+    {
+      "name": "qt6-websockets",
+      "version>=": "6.5.0"
+    },
+    "nlohmann-json"
+  ],
+  "builtin-baseline": "2024.01.12"
+}
