@@ -3,3 +3,6 @@ node_modules
 /dist-es
 esbuild.config.js
 .DS_Store
+build/
+.vscode/
+SETUP_GUIDE.md
