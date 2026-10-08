@@ -4,8 +4,8 @@
   "description": "bytebridge",
   "main": "dist/main/main.js",
   "build": {
-    "appId": "com.example.myapp",
-    "productName": "MyApp",
+    "appId": "app.bytebridge.desktop",
+    "productName": "ByteBridge",
     "files": [
       "dist/**/*",
       "package.json"
@@ -14,7 +14,7 @@
       "category": "public.app-category.productivity",
       "protocols": [
         {
-          "name": "MyApp Protocol",
+          "name": "ByteBridge Invitation",
           "schemes": [
             "myapp"
           ]
@@ -23,28 +23,32 @@
     }
   },
   "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "server:local": "node --env-file=.env scripts/server.mjs",
     "build": "webpack --config webpack.config.js && npm run build:main",
     "build:main": "tsc -p tsconfig.main.json",
     "watch": "webpack --watch --config webpack.config.js",
     "start": "npm run build && electron .",
     "dev": "NODE_ENV=development electron .",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "server": "HOST=localhost PORT=1234 y-websocket",
+    "test": "npm run build:main && node --test tests/*.test.mjs",
+    "test:profiles": "npm run build && node scripts/check-profiles.mjs",
+    "test:desktop": "npm run build && electron scripts/check-desktop.mjs && electron scripts/check-desktop.mjs --cold-invite",
+    "server": "node scripts/server.mjs",
     "dist": "npm run build && electron-builder"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/electron": "^1.6.12",
     "@types/node": "^24.5.2",
     "copy-webpack-plugin": "^13.0.1",
     "css-loader": "^7.1.2",
     "electron": "^38.1.2",
     "electron-builder": "^26.0.12",
+    "prettier": "3.9.9",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.4",
-    "ts-node": "^10.9.2",
     "typescript": "^5.9.2",
     "webpack": "^5.101.3",
     "webpack-cli": "^6.0.1"
@@ -53,6 +57,7 @@
   "dependencies": {
     "@y/websocket-server": "^0.1.1",
     "monaco-editor": "^0.53.0",
+    "ws": "^8.22.0",
     "y-monaco": "^0.1.6",
     "y-websocket": "^3.0.0",
     "yjs": "^13.6.27"

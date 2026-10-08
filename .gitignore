@@ -1,8 +1,40 @@
-node_modules
-/dist
-/dist-es
-esbuild.config.js
+# Dependencies and generated builds
+node_modules/
+/dist/
+/dist-es/
+/build/
+*.tsbuildinfo
+
+# Local room data, including credentials and shared content
+/.bytebridge-data/
+
+# Environment secrets and local TLS / signing material
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Logs, caches, and generated test reports
+*.log
+/.cache/
+/coverage/
+/.nyc_output/
+/test-results/
+/playwright-report/
+/docs/phase-0/evidence/
+
+# Machine-specific files and editor state
 .DS_Store
-build/
+Thumbs.db
 .vscode/
-SETUP_GUIDE.md
+.idea/
+*.swp
+*.swo
+
+.prettierignore
+.prettierrc.json
+docs
+ROADMAP.md
