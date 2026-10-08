@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('api', {
+  ready: () => ipcRenderer.invoke('renderer:ready'),
+  saveMarkdown: (content: string) =>
+    ipcRenderer.invoke('export:markdown', content),
   copyToClipboard: async (text: string) =>
     await ipcRenderer.invoke('clipboard:copy', text),
 
