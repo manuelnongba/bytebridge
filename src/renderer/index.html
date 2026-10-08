@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -7,18 +7,217 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div id="name-modal" class="modal">
-      <div class="modal-content">
-        <h2>Enter Your Name</h2>
-        <input type="text" id="name-input" placeholder="Your name" />
-        <button id="join-button">Join</button>
+    <main id="workspace">
+      <header class="app-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">⟷</span
+          ><strong>ByteBridge</strong
+          ><span class="brand-caption">Shared workspace</span>
+        </div>
+        <div class="header-actions">
+          <!-- <button id="open-library" class="button secondary">Sessions</button> -->
+          <button id="open-join" class="button secondary">Join room</button>
+          <button id="create-room" class="button secondary">+ New room</button>
+          <button id="copy-invite" class="button primary" disabled>
+            Copy invitation <span aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </header>
+      <div class="room-bar">
+        <span id="resolution-badge" class="session-badge" hidden>Open</span>
+        <button id="open-resolution" class="button secondary" hidden>
+          Resolution
+        </button>
+        <button id="open-timeline" class="button secondary" hidden>
+          Investigation
+        </button>
+        <button id="open-context" class="button secondary" hidden>
+          Debugging context
+        </button>
+        <!-- <span class="eyebrow">SESSION</span> -->
+        <span id="room-label">Your next idea starts here</span
+        ><button id="manage-invites" class="button secondary" hidden>
+          Manage access
+        </button>
       </div>
+      <p id="room-notice" role="status"></p>
+      <div id="room-overview" hidden>
+        <h2>Room overview</h2>
+        <p id="overview-status" role="status">
+          Loading shared debugging context…
+        </p>
+        <button id="enter-editor" class="button primary" disabled>
+          Open shared editor
+        </button>
+      </div>
+      <div id="workspace-body" data-stage="overview">
+        <div id="inspector">
+          <aside id="resolution-panel" aria-label="Resolution" hidden></aside>
+          <aside
+            id="debug-context"
+            aria-label="Debugging context"
+            hidden
+          ></aside>
+          <aside
+            id="investigation-panel"
+            aria-label="Investigation timeline"
+            hidden
+          ></aside>
+          <div id="access-panel" hidden>
+            <button
+              id="close-access"
+              class="close-control"
+              type="button"
+              aria-label="Close invitations"
+            >
+              ×
+            </button>
+            <strong>Invitations</strong>
+            <p>
+              Anyone with an active invitation can view and edit. Revoking it
+              disconnects everyone using that link.
+            </p>
+            <label
+              >New invitation expires in
+              <select id="invite-hours"></select
+            ></label>
+            <div id="invite-list"></div>
+          </div>
+        </div>
+        <div
+          id="panel-resizer"
+          role="separator"
+          tabindex="0"
+          aria-label="Resize side panel"
+          aria-controls="inspector"
+          title="Drag to resize. Arrow keys adjust; Home/End set limits. Double-click to reset."
+          hidden
+        ></div>
+        <div id="empty-workspace">
+          <span class="brand-mark" aria-hidden="true">⟷</span>
+          <h1>Your workspace is ready</h1>
+          <p>Create a room or join an invitation using the buttons above.</p>
+          <button id="resume-room" class="button secondary">
+            Return to a saved room
+          </button>
+        </div>
+        <section
+          id="editor-panel"
+          class="editor-panel"
+          style="display: none"
+          aria-label="Collaborative code editor"
+        >
+          <div class="editor-toolbar">
+            <div class="document-tab">
+              <span aria-hidden="true">⌘</span> Shared code
+              <span class="live-label">LIVE</span>
+            </div>
+            <label class="language-control"
+              >Language
+              <select id="language-select" class="language-selector"></select
+            ></label>
+          </div>
+          <div id="editor"></div>
+        </section>
+      </div>
+      <footer class="status-bar">
+        <span id="connection-status" data-state="idle" role="status"
+          >Not connected</span
+        >
+        <p
+          id="remote-cursor-name"
+          class="remote-cursor-name-selector"
+          aria-live="polite"
+        ></p>
+        <span id="local-user">Ready when you are</span>
+      </footer>
+    </main>
+    <div id="name-modal" class="modal">
+      <form
+        id="join-form"
+        class="modal-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="join-title"
+        aria-describedby="join-description"
+      >
+        <button
+          id="close-join"
+          class="close-control"
+          type="button"
+          aria-label="Close room dialog"
+        >
+          ×
+        </button>
+        <span class="brand-mark modal-mark" aria-hidden="true">⟷</span>
+        <p class="eyebrow">BETTER TOGETHER</p>
+        <h1 id="join-title">A shared space.<br />A fresh perspective.</h1>
+        <p id="join-description">
+          Bring your code and work through it together. Choose a name so your
+          teammates know it’s you.
+        </p>
+        <label for="name-input">Your display name</label>
+        <input
+          type="text"
+          id="name-input"
+          placeholder="e.g. Emmanuel"
+          autocomplete="nickname"
+          maxlength="60"
+          required
+        />
+        <label for="room-mode">Room</label>
+        <select id="room-mode">
+          <option value="create">Create a room</option>
+          <option value="join">Join with an invitation</option>
+          <option value="resume">Return to a saved room</option>
+        </select>
+        <div id="create-fields">
+          <label for="server-input">Collaboration server</label
+          ><input id="server-input" type="url" />
+          <label for="creation-key">Server creation key (if required)</label
+          ><input id="creation-key" type="password" autocomplete="off" />
+          <label for="room-title">Room name</label
+          ><input id="room-title" value="Shared workspace" maxlength="100" />
+        </div>
+        <div id="invite-fields" hidden>
+          <label for="invite-input">Invitation link</label
+          ><textarea
+            id="invite-input"
+            rows="3"
+            placeholder="Paste a myapp:// invitation"
+          ></textarea>
+          <p id="invite-destination"></p>
+        </div>
+        <div id="resume-fields" hidden>
+          <label for="session-search">Search sessions on this profile</label>
+          <input
+            id="session-search"
+            type="search"
+            placeholder="Title, error text, or tag"
+          />
+          <p id="session-count" role="status"></p>
+          <label for="session-filter">Show</label>
+          <select id="session-filter">
+            <option value="active">Unarchived sessions</option>
+            <option value="archived">Archived sessions</option>
+            <option value="all">All sessions</option>
+          </select>
+          <label for="saved-room">Saved rooms on this device</label
+          ><select id="saved-room"></select>
+          <div id="session-management"></div>
+        </div>
+        <p id="join-error" role="alert"></p>
+        <button id="join-button" class="button primary" type="submit">
+          Enter workspace <span aria-hidden="true">→</span>
+        </button>
+        <button id="cancel-join" class="button secondary" type="button">
+          Back to current room
+        </button>
+        <p class="modal-footnote">
+          One room. A little less figuring it out alone.
+        </p>
+      </form>
     </div>
-    <section style="display: none">
-      <select id="language-select" class="language-selector"></select>
-      <p id="remote-cursor-name" class="remote-cursor-name-selector"></p>
-      <div id="editor" style="height: 90vh; border: 1px solid #ccc"></div>
-    </section>
     <script type="module" src="./renderer.js"></script>
   </body>
 </html>
