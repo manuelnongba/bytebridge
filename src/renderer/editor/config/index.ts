@@ -1,7 +1,12 @@
 export const DEFAULT_LANGUAGE = 'javascript';
 export const EDITOR_CONFIG = {
-  value: 'javascript',
+  value: '',
+  automaticLayout: true,
   language: DEFAULT_LANGUAGE,
   theme: 'vs-dark',
-  minimap: { enabled: true },
+  fontSize: 14,
+  lineHeight: 23,
+  padding: { top: 18, bottom: 18 },
+  scrollBeyondLastLine: false,
+  minimap: { enabled: false },
 };

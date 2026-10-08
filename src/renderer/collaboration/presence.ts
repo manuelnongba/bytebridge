@@ -4,6 +4,8 @@ import type { Awareness } from 'y-protocols/awareness.js';
 export class PresenceManager {
   editor: monaco.editor.IStandaloneCodeEditor;
   decorations: Map<number, monaco.editor.IEditorDecorationsCollection>;
+  styles = new Map<number, HTMLStyleElement>();
+  listeners: monaco.IDisposable[] = [];
 
   constructor(editor: monaco.editor.IStandaloneCodeEditor) {
     this.editor = editor;
@@ -13,9 +15,13 @@ export class PresenceManager {
   updateCursors(
     states: AwarenessState,
     awareness: Awareness,
-    remoteCursorName: HTMLParagraphElement
+    remoteCursorName: HTMLParagraphElement,
+    showLabels: boolean,
   ) {
     this.clearDecorations();
+    this.styles.forEach((style) => style.remove());
+    this.styles.clear();
+    remoteCursorName.textContent = '';
 
     states.forEach(([clientId, state]) => {
       if (
@@ -29,21 +35,23 @@ export class PresenceManager {
             state.cursor.line,
             state.cursor.column,
             state.cursor.line,
-            state.cursor.column + 1
+            state.cursor.column + 1,
           ),
           options: {
             className: `cursor-${clientId}`,
+            hoverMessage: showLabels
+              ? {
+                  value: String(state.user.name || 'Teammate')
+                    .replace(/[\r\n]/g, ' ')
+                    .slice(0, 60)
+                    .replace(/([\\`*_{}\[\]()<>#+.!|~-])/g, '\\$1'),
+                  isTrusted: false,
+                }
+              : null,
             stickiness:
               monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
           },
         };
-        if (state.editing) {
-          remoteCursorName.textContent = state.user.name + ' is editing...';
-
-          setTimeout(() => {
-            remoteCursorName.textContent = '';
-          }, 1000);
-        }
         this.updateCursorStyle(clientId, state);
         const collection = this.editor.createDecorationsCollection([
           decoration,
@@ -56,10 +64,11 @@ export class PresenceManager {
   updateCursorStyle(clientId: number, state: any) {
     const style = document.createElement('style');
     document.head.appendChild(style);
+    this.styles.set(clientId, style);
 
     style.textContent = `
        .cursor-${clientId} {
-          background-color: ${state.user.color};
+          background-color: ${/^#[0-9a-f]{6}$/i.test(state.user.color) ? state.user.color : '#007acc'};
           width: 2px !important;
           margin-left: -1px;
         }
@@ -70,30 +79,35 @@ export class PresenceManager {
     editor: monaco.editor.IStandaloneCodeEditor,
     awareness: Awareness,
     remoteCursorName: HTMLParagraphElement,
-    name: string
+    name: string,
   ) {
     awareness?.setLocalStateField('user', {
       name: name,
-      color: '#' + Math.floor(Math.random() * 16777215).toString(16),
+      color:
+        '#' +
+        Math.floor(Math.random() * 16777215)
+          .toString(16)
+          .padStart(6, '0'),
     });
 
-    editor.onDidChangeCursorPosition((e) => {
-      const position = editor.getPosition();
-      if (position) {
-        awareness?.setLocalStateField('cursor', {
-          line: position.lineNumber,
-          column: position.column,
-        });
-      }
-    });
+    this.listeners.push(
+      editor.onDidChangeCursorPosition(() => {
+        const position = editor.getPosition();
+        if (position) {
+          awareness?.setLocalStateField('cursor', {
+            line: position.lineNumber,
+            column: position.column,
+          });
+        }
+      }),
+    );
+  }
 
-    editor.onKeyUp(() => {
-      awareness?.setLocalStateField('editing', true);
-      setTimeout(() => {
-        remoteCursorName.textContent = '';
-        awareness?.setLocalStateField('editing', false);
-      }, 1000);
-    });
+  dispose() {
+    this.listeners.forEach((listener) => listener.dispose());
+    this.clearDecorations();
+    this.styles.forEach((style) => style.remove());
+    this.styles.clear();
   }
 
   clearDecorations() {
