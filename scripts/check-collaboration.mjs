@@ -5,18 +5,23 @@ import { WebsocketProvider } from 'y-websocket';
 
 // Uses the same provider and document key as the app, but does not test its UI.
 const origin = process.env.BYTEBRIDGE_SERVER || 'http://localhost:1234';
+
 async function createRoom() {
   const response = await fetch(`${origin}/rooms`, {
     method: 'POST',
     headers: { 'X-Creation-Key': process.env.ROOM_CREATION_KEY || '' },
   });
+
   if (!response.ok)
     throw new Error(`Room creation failed (${response.status})`);
+
   return response.json();
 }
+
 const room = await createRoom();
 const separateRoom = await createRoom();
 const clients = [];
+
 function client(roomAccess = room) {
   const doc = new Y.Doc();
   const provider = new WebsocketProvider(
@@ -30,14 +35,18 @@ function client(roomAccess = room) {
     },
   );
   const result = { doc, provider, text: doc.getText('monaco') };
+
   clients.push(result);
+
   return result;
 }
 
 async function until(predicate, label) {
   const deadline = Date.now() + 8000;
+
   while (!predicate()) {
     if (Date.now() > deadline) throw new Error(`Timed out: ${label}`);
+
     await delay(25);
   }
 }
@@ -46,6 +55,7 @@ try {
   const a = client();
   const b = client();
   const other = client(separateRoom);
+
   await until(() => clients.every((c) => c.provider.synced), 'initial sync');
   a.text.insert(0, 'hello');
   await until(() => b.text.toString() === 'hello', 'A → B edit');
@@ -79,6 +89,7 @@ try {
   console.log('PASS: disconnected edits converge on reconnect');
 
   const late = client();
+
   await until(
     () => late.provider.synced && late.text.toString() === a.text.toString(),
     'late join',

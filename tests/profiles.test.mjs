@@ -22,5 +22,6 @@ test('profile names cannot escape the profile directory', () => {
     'a'.repeat(41),
   ])
     assert.throws(() => profileFrom([`--profile=${value}`]), /Profile names/);
+
   assert.throws(() => profileFrom(['--profile']), /Profile names/);
 });

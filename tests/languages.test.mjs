@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {
   ATTACHMENT_LANGUAGES,
   detectLanguage,
-} from '../src/renderer/debugging/languages.js';
-import { APP_CONFIG } from '../src/renderer/app-config.js';
-import { readAttachment } from '../src/renderer/debugging/data.js';
+} from '../dist/typescript/renderer/debugging/languages.js';
+import { APP_CONFIG } from '../dist/typescript/renderer/app-config.js';
+import { readAttachment } from '../dist/typescript/renderer/debugging/data.js';
 
 test('attachment detection covers extensions, uppercase names, and special filenames', () => {
   for (const [filename, language] of Object.entries({
@@ -54,5 +54,6 @@ test('selected files use the expanded registry', async () => {
     },
     APP_CONFIG.debugging,
   );
+
   assert.equal(attachment.language, 'rust');
 });

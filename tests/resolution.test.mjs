@@ -1,14 +1,49 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { APP_CONFIG } from '../src/renderer/app-config.js';
+
+test('simple solved notes do not require the old resolution process', () => {
+  const record = {
+    id: 'simple',
+    type: 'resolution',
+    simple: true,
+    author: 'Alice',
+    createdAt: 1,
+    cause: '',
+    fix: '',
+    tags: [],
+    evidenceIds: [],
+  };
+
+  assert.equal(resolutionState([record]).resolved, true);
+  assert.match(resolutionText(record), /No note provided/);
+  assert.doesNotMatch(
+    resolutionText(record),
+    /Root cause|Supporting explanation/,
+  );
+
+  const reopened = {
+    id: 'reopened',
+    type: 'reopen',
+    author: 'Bob',
+    createdAt: 2,
+    reason: '',
+  };
+
+  assert.equal(resolutionState([record, reopened]).resolved, false);
+  assert.equal(resolutionState([record, reopened]).resolution.id, 'simple');
+});
+
+import { APP_CONFIG } from '../dist/typescript/renderer/app-config.js';
 import {
   createResolution,
   validateResolutionAppend,
   resolutionState,
+  resolutionText,
   exportResolution,
   searchSessions,
   fenced,
-} from '../src/renderer/resolution/data.js';
+} from '../dist/typescript/renderer/resolution/data.js';
+
 const config = APP_CONFIG.resolutions;
 const events = [
   {
@@ -49,8 +84,10 @@ const input = {
   beforeId: 'a',
   afterId: 'b',
 };
+
 test('resolution validates evidence and checkpoints and normalizes tags', () => {
   const record = createResolution(input, events, config, 'Alice');
+
   assert.deepEqual(record.tags, ['prices', 'validation']);
   assert.throws(
     () => createResolution({ ...input, cause: '' }, events, config, 'A'),
@@ -86,6 +123,7 @@ test('reopening retains prior resolutions', () => {
       createdAt: 4,
     },
   ]);
+
   assert.equal(state.resolved, false);
   assert.equal(state.resolution.id, record.id);
 });
@@ -98,6 +136,7 @@ test('export includes evidence and comparisons without room credentials', () => 
     events,
     records: [record],
   });
+
   for (const value of [
     'Missing validation',
     '4 passed',
@@ -106,13 +145,16 @@ test('export includes evidence and comparisons without room credentials', () => 
     'not independently verified',
   ])
     assert.ok(md.includes(value), value);
+
   assert.ok(!md.includes('PRIVATE_TOKEN'));
+
   const noEvidence = exportResolution({
     title: 'Bug',
     context: {},
     events: [],
     records: [{ ...record, evidenceIds: [], beforeId: null, afterId: null }],
   });
+
   assert.match(noEvidence, /participant claims only/);
   assert.ok(fenced('```\n<script>hi</script>').startsWith('````\n'));
 });
@@ -125,6 +167,7 @@ test('session search matches titles, errors, and tags while retaining original i
     },
     { id: 'b', title: 'Login issue' },
   ];
+
   assert.deepEqual(
     searchSessions(rooms, 'nan validation').map((item) => item.index),
     [0],

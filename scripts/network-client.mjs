@@ -5,11 +5,13 @@ import { setTimeout as delay } from 'node:timers/promises';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import WebSocket from 'ws';
-import { serverAddress } from '../src/renderer/collaboration/access.js';
+import { serverAddress } from '../dist/typescript/renderer/collaboration/access.js';
 
 let input = '';
+
 for await (const chunk of process.stdin) {
   input += chunk;
+
   if (input.length > 16384) throw new Error('Configuration too large');
 }
 
@@ -24,6 +26,7 @@ if (
   !/^[\w-]{43}$/.test(token || '')
 )
   throw new Error('Invalid test configuration');
+
 if (
   !allowLocal &&
   (new URL(server).protocol !== 'https:' ||
@@ -35,7 +38,9 @@ if (
 
 const startedAt = new Date().toISOString();
 const events = [];
+
 const record = (event) => events.push({ event, at: new Date().toISOString() });
+
 let provider;
 let doc;
 let publicIp = null;
@@ -44,6 +49,7 @@ const deadline = Date.now() + 90000;
 async function until(predicate, label) {
   while (!predicate()) {
     if (Date.now() > deadline) throw new Error(`Timed out: ${label}`);
+
     await delay(50);
   }
 }
@@ -54,18 +60,23 @@ try {
     const response = await fetch('https://checkip.amazonaws.com', {
       signal: AbortSignal.timeout(8000),
     });
+
     publicIp = (await response.text()).trim();
+
     if (!response.ok || !isIP(publicIp))
       throw new Error('Could not verify host public IP');
   }
+
   doc = new Y.Doc();
   provider = new WebsocketProvider(server.replace(/^http/, 'ws'), room, doc, {
     WebSocketPolyfill: WebSocket,
     params: { token },
     disableBc: true,
   });
+
   const state = doc.getMap(`network-test-${run}`);
   const text = doc.getText('monaco');
+
   await until(() => provider.synced, 'authorized room synchronization');
   record('connected');
   state.set(`ready-${client}`, true);
@@ -73,7 +84,9 @@ try {
     () => state.get('ready-A') && state.get('ready-B'),
     'both hosts ready',
   );
+
   const marker = `[${run}:${client}:initial]`;
+
   text.insert(text.length, marker);
   await until(
     () =>

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   panelBounds,
   readPanelSizes,
-} from '../src/renderer/ui/panel-resize.js';
+} from '../dist/typescript/renderer/ui/panel-resize.js';
 
 test('panel bounds preserve editor space, including undersized windows', () => {
   assert.deepEqual(panelBounds(1000, 260, 300), { min: 260, max: 700 });
@@ -13,6 +13,7 @@ test('panel bounds preserve editor space, including undersized windows', () => {
 test('panel preferences reject invalid values and inaccessible storage', () => {
   for (const value of ['null', 'oops', '{}', '{"width":-5,"height":"300"}'])
     assert.deepEqual(readPanelSizes({ getItem: () => value }), {});
+
   assert.deepEqual(
     readPanelSizes({ getItem: () => '{"width":550,"height":220}' }),
     { width: 550, height: 220 },

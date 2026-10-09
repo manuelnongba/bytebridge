@@ -10,13 +10,19 @@ import assert from 'node:assert/strict';
 
 const exec = promisify(execFile);
 const appPath = process.argv[2];
+
 if (!appPath?.endsWith('/ByteBridge.app'))
   throw new Error('Pass the absolute path to the packaged ByteBridge.app');
+
 const directory = await mkdtemp(path.join(tmpdir(), 'bytebridge-packaged-'));
 const reservation = net.createServer();
+
 await new Promise((resolve) => reservation.listen(0, '127.0.0.1', resolve));
+
 const debugPort = reservation.address().port;
+
 await new Promise((resolve) => reservation.close(resolve));
+
 const server = spawn(process.execPath, ['scripts/server.mjs'], {
   env: {
     ...process.env,
@@ -34,43 +40,55 @@ let browser;
 let page;
 let origin;
 const results = [];
+
 const record = (name, result) => {
   results.push({ name, result });
   console.log(name, result);
 };
+
 async function connect(url) {
   const socket = new WebSocket(url);
+
   await new Promise((resolve, reject) => {
     socket.addEventListener('open', resolve, { once: true });
     socket.addEventListener('error', reject, { once: true });
   });
+
   let next = 0;
   const pending = new Map();
+
   socket.addEventListener('message', (event) => {
     const message = JSON.parse(event.data);
+
     if (!message.id || !pending.has(message.id)) return;
+
     const { resolve, reject, timer } = pending.get(message.id);
+
     clearTimeout(timer);
     pending.delete(message.id);
     message.error
       ? reject(new Error(message.error.message))
       : resolve(message.result);
   });
+
   return {
     socket,
     call(method, params = {}) {
       const id = ++next;
+
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           pending.delete(id);
           reject(new Error(`Timed out: ${method}`));
         }, 8000);
+
         pending.set(id, { resolve, reject, timer });
         socket.send(JSON.stringify({ id, method, params }));
       });
     },
   };
 }
+
 async function evaluate(code) {
   const result = await page.call('Runtime.evaluate', {
     expression: code,
@@ -78,16 +96,22 @@ async function evaluate(code) {
     awaitPromise: true,
     userGesture: true,
   });
+
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.text);
+
   return result.result.value;
 }
+
 async function until(code, label) {
   for (let i = 0; i < 100; i++) {
     if (await evaluate(code)) return;
+
     await delay(100);
   }
+
   throw new Error(`Timed out: ${label}`);
 }
+
 async function invitation() {
   const created = await fetch(`${origin}/rooms`, {
     method: 'POST',
@@ -99,19 +123,23 @@ async function invitation() {
     headers: { Authorization: `Bearer ${room.token}` },
   });
   const invite = await response.json();
+
   return {
     id: room.id,
     url: `myapp://join?${new URLSearchParams({ room: room.id, server: origin, token: invite.token })}`,
   };
 }
+
 try {
   const port = await new Promise((resolve, reject) => {
     const timeout = setTimeout(
       () => reject(new Error('Server startup timeout')),
       8000,
     );
+
     server.stdout.on('data', (data) => {
       const match = String(data).match(/port (\d+)/);
+
       if (match) {
         clearTimeout(timeout);
         resolve(Number(match[1]));
@@ -122,8 +150,11 @@ try {
       reject(new Error(String(data)));
     });
   });
+
   origin = `http://127.0.0.1:${port}`;
+
   const cold = await invitation();
+
   await exec('/usr/bin/open', [
     '-n',
     '-a',
@@ -133,21 +164,28 @@ try {
     `--user-data-dir=${path.join(directory, 'profile')}`,
     `--remote-debugging-port=${debugPort}`,
   ]);
+
   let targets;
+
   for (let i = 0; i < 150; i++) {
     try {
       targets = await (
         await fetch(`http://127.0.0.1:${debugPort}/json`)
       ).json();
+
       if (targets.some((target) => target.type === 'page')) break;
     } catch {}
+
     await delay(100);
   }
+
   if (!targets?.some((target) => target.type === 'page'))
     throw new Error('Packaged app debugging endpoint unavailable');
+
   const version = await (
     await fetch(`http://127.0.0.1:${debugPort}/json/version`)
   ).json();
+
   browser = await connect(version.webSocketDebuggerUrl);
   page = await connect(
     targets.find((target) => target.type === 'page').webSocketDebuggerUrl,
@@ -172,6 +210,7 @@ try {
   await evaluate(`document.getElementById('enter-editor')?.click()`);
 
   const warm = await invitation();
+
   await exec('/usr/bin/open', ['-a', appPath, warm.url]);
   await until(
     `document.getElementById('name-modal').style.display === 'flex'`,
@@ -193,7 +232,9 @@ try {
     1,
   );
   record('macOS warm URL launch', 'PASS: intended room, one editor');
+
   const capture = await page.call('Page.captureScreenshot');
+
   await writeFile(
     path.join(directory, 'packaged-app.png'),
     Buffer.from(capture.data, 'base64'),
@@ -206,14 +247,18 @@ try {
     try {
       await browser.call('Browser.close');
     } catch {}
+
     browser.socket.close();
   }
+
   page?.socket.close();
+
   if (server.exitCode === null)
     await new Promise((resolve) => {
       server.once('exit', resolve);
       server.kill('SIGTERM');
     });
+
   await writeFile(
     path.join(directory, 'results.json'),
     JSON.stringify(results, null, 2),

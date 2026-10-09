@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as Y from 'yjs';
-import { APP_CONFIG } from '../src/renderer/app-config.js';
+import { APP_CONFIG } from '../dist/typescript/renderer/app-config.js';
 import {
   createEvent,
   validateAppend,
   catchUp,
-} from '../src/renderer/investigation/events.js';
+} from '../dist/typescript/renderer/investigation/events.js';
 
 const config = APP_CONFIG.timeline;
 const input = {
@@ -32,6 +32,7 @@ test('checkpoint freezes code, author, language, and timestamp with a stable ID'
     snapshot,
     12345,
   );
+
   assert.equal(event.code, snapshot.code);
   assert.equal(event.author, 'Alice');
   assert.equal(event.createdAt, 12345);
@@ -47,6 +48,7 @@ test('outcomes require a valid investigation and enforce configured choices and 
     config,
     snapshot,
   );
+
   assert.throws(
     () => createEvent({ ...input, type: 'outcome' }, [], config, snapshot),
     /Link/,
@@ -109,6 +111,7 @@ test('catch-up separates open questions from reported results and preserves orig
     snapshot,
   );
   const text = catchUp([question, experiment, result], 'Changed issue');
+
   assert.match(text, /Order preview is NaN/);
   assert.match(text, /Run price test: failed/);
   assert.match(
@@ -120,15 +123,18 @@ test('catch-up separates open questions from reported results and preserves orig
 test('concurrent entries merge and checkpoint history does not overwrite live code', () => {
   const a = new Y.Doc(),
     b = new Y.Doc();
+
   try {
     a.getText('monaco').insert(0, 'live code');
     Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
+
     const checkpoint = createEvent(
       { ...input, type: 'checkpoint' },
       [],
       config,
       snapshot,
     );
+
     a.getArray('investigation-events').push([checkpoint]);
     b.getArray('investigation-events').push([
       createEvent(input, [], config, snapshot),
@@ -141,7 +147,9 @@ test('concurrent entries merge and checkpoint history does not overwrite live co
     );
     assert.equal(a.getArray('investigation-events').length, 2);
     assert.equal(b.getText('monaco').toString(), 'live code');
+
     const late = new Y.Doc();
+
     Y.applyUpdate(late, Y.encodeStateAsUpdate(a));
     assert.equal(
       late

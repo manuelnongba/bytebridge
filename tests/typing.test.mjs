@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { typingLabel } from '../src/renderer/collaboration/typing.js';
+import { typingLabel } from '../dist/typescript/renderer/collaboration/typing.js';
 
 test('typing label excludes self and idle participants and handles multiple editors', () => {
   const state = (name) => ({ user: { name }, editing: true });
+
   assert.equal(
     typingLabel(
       [

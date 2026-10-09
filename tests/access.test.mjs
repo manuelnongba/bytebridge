@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { request } from '../src/renderer/collaboration/access.js';
+import { request } from '../dist/typescript/renderer/collaboration/access.js';
 
 test('legacy plain-text server produces an actionable error', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => new Response('okay'));

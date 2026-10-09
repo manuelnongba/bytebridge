@@ -12,7 +12,7 @@ import { LeveldbPersistence } from 'y-leveldb';
 import {
   serverAddress,
   parseInvitation,
-} from '../src/renderer/collaboration/access.js';
+} from '../dist/typescript/renderer/collaboration/access.js';
 
 test('remote connections require HTTPS and invitations need credentials', () => {
   assert.equal(serverAddress('http://localhost:1234'), 'http://localhost:1234');
@@ -20,6 +20,7 @@ test('remote connections require HTTPS and invitations need credentials', () => 
     serverAddress('https://rooms.example.com/'),
     'https://rooms.example.com',
   );
+
   for (const address of [
     'http://rooms.example.com',
     'http://192.168.1.3',
@@ -27,6 +28,7 @@ test('remote connections require HTTPS and invitations need credentials', () => 
     'https://example.com/path',
   ])
     assert.throws(() => serverAddress(address));
+
   assert.throws(() => parseInvitation('myapp://join?room=public-old-room'));
 });
 
@@ -39,6 +41,7 @@ test(
       origin,
       port = 0;
     const clients = [];
+
     async function start() {
       child = spawn(process.execPath, ['scripts/server.mjs'], {
         env: {
@@ -55,8 +58,10 @@ test(
           () => reject(new Error('Server startup timeout')),
           8000,
         );
+
         child.stdout.on('data', (data) => {
           const match = String(data).match(/port (\d+)/);
+
           if (match) {
             port = Number(match[1]);
             origin = `http://127.0.0.1:${port}`;
@@ -75,13 +80,16 @@ test(
         });
       });
     }
+
     async function stop() {
       if (!child || child.exitCode !== null) return;
+
       await new Promise((resolve) => {
         child.once('exit', resolve);
         child.kill('SIGTERM');
       });
     }
+
     async function api(route, { method = 'GET', token, data, key } = {}) {
       const response = await fetch(origin + route, {
         method,
@@ -92,15 +100,20 @@ test(
         },
         ...(data ? { body: JSON.stringify(data) } : {}),
       });
+
       return { status: response.status, data: await response.json() };
     }
+
     async function until(predicate) {
       for (let i = 0; i < 100; i++) {
         if (predicate()) return;
+
         await delay(30);
       }
+
       throw new Error('Condition not reached');
     }
+
     function client(id, token) {
       const doc = new Y.Doc();
       const provider = new WebsocketProvider(
@@ -110,14 +123,18 @@ test(
         { WebSocketPolyfill: WebSocket, params: { token }, disableBc: true },
       );
       const result = { doc, provider, text: doc.getText('monaco') };
+
       clients.push(result);
+
       return result;
     }
+
     async function denied(id, token) {
       await new Promise((resolve, reject) => {
         const ws = new WebSocket(
           `${origin.replace('http', 'ws')}/${id}?token=${token}`,
         );
+
         ws.on('unexpected-response', (_req, response) => {
           try {
             assert.equal(response.statusCode, 403);
@@ -135,19 +152,25 @@ test(
         ws.on('error', () => {});
       });
     }
+
     try {
       await start();
       assert.equal((await api('/rooms', { method: 'POST' })).status, 403);
+
       const created = await api('/rooms', {
         method: 'POST',
         key: 'test-creation-key',
         data: { title: 'Persistent room' },
       });
+
       assert.equal(created.status, 201);
+
       const room = created.data;
+
       assert.equal((await api(`/rooms/${room.id}`)).status, 403);
       await denied(room.id, 'wrong');
       await denied('__proto__', 'wrong');
+
       const invite = (
         await api(`/rooms/${room.id}/invites`, {
           method: 'POST',
@@ -155,6 +178,7 @@ test(
           data: { hours: 24 },
         })
       ).data;
+
       assert.equal(
         (
           await api(`/rooms/${room.id}/invites`, {
@@ -164,15 +188,20 @@ test(
         ).status,
         403,
       );
+
       const other = (
         await api('/rooms', { method: 'POST', key: 'test-creation-key' })
       ).data;
+
       await denied(other.id, invite.token);
+
       const owner = client(room.id, room.token),
         guest = client(room.id, invite.token);
+
       await until(() => owner.provider.synced && guest.provider.synced);
       owner.text.insert(0, 'durable content');
       await until(() => guest.text.toString() === 'durable content');
+
       for (const method of ['PATCH', 'DELETE']) {
         assert.equal(
           (
@@ -185,6 +214,7 @@ test(
           403,
         );
       }
+
       assert.equal(
         (
           await api(`/rooms/${room.id}`, {
@@ -245,6 +275,7 @@ test(
         (await api(`/rooms/${room.id}`, { token: invite.token })).status,
         403,
       );
+
       const temporary = (
         await api(`/rooms/${room.id}/invites`, {
           method: 'POST',
@@ -253,6 +284,7 @@ test(
         })
       ).data;
       const expiring = client(room.id, temporary.token);
+
       await until(() => expiring.provider.synced);
       await until(
         () =>
@@ -260,10 +292,12 @@ test(
       );
       expiring.provider.disconnect();
       await denied(room.id, temporary.token);
+
       for (const c of clients) {
         c.provider.destroy();
         c.doc.destroy();
       }
+
       clients.length = 0;
       await stop();
       await start();
@@ -272,19 +306,24 @@ test(
         'Renamed room',
       );
       await denied(room.id, invite.token);
+
       const fresh = client(room.id, room.token);
+
       await until(
         () =>
           fresh.provider.synced && fresh.text.toString() === 'durable content',
       );
+
       const metadata = await readFile(
         path.join(directory, 'rooms.json'),
         'utf8',
       );
+
       assert.ok(
         !metadata.includes(room.token) && !metadata.includes(invite.token),
         'store token hashes, not credentials',
       );
+
       const deletionInvite = (
         await api(`/rooms/${room.id}/invites`, {
           method: 'POST',
@@ -292,6 +331,7 @@ test(
         })
       ).data;
       const deletionGuest = client(room.id, deletionInvite.token);
+
       await until(() => deletionGuest.provider.synced);
       assert.equal(
         (
@@ -316,12 +356,15 @@ test(
         200,
       );
       await stop();
+
       const storage = new LeveldbPersistence(directory);
+
       try {
         assert.equal((await storage.getAllDocNames()).includes(room.id), false);
       } finally {
         await storage.destroy();
       }
+
       await start();
       assert.equal(
         (await api(`/rooms/${room.id}`, { token: room.token })).status,
@@ -341,15 +384,19 @@ test(
         ),
         false,
       );
+
       // Simulate a crash after durable denial but before document cleanup.
       const interrupted = client(other.id, other.token);
+
       await until(() => interrupted.provider.synced);
       interrupted.text.insert(0, 'Pending deletion content');
       await delay(100);
       interrupted.provider.disconnect();
       await stop();
+
       const metadataPath = path.join(directory, 'rooms.json');
       const pendingMetadata = JSON.parse(await readFile(metadataPath, 'utf8'));
+
       pendingMetadata[other.id].deleted = true;
       await writeFile(metadataPath, JSON.stringify(pendingMetadata));
       await start();
@@ -362,9 +409,12 @@ test(
         false,
       );
       await stop();
+
       const recoveredStorage = new LeveldbPersistence(directory);
+
       try {
         const recovered = await recoveredStorage.getYDoc(other.id);
+
         assert.equal(recovered.getText('monaco').toString(), '');
         recovered.destroy();
         assert.equal(
@@ -379,6 +429,7 @@ test(
         c.provider.destroy();
         c.doc.destroy();
       }
+
       await stop();
     }
   },

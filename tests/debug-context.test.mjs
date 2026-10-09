@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as Y from 'yjs';
-import { APP_CONFIG } from '../src/renderer/app-config.js';
+import { APP_CONFIG } from '../dist/typescript/renderer/app-config.js';
 import {
   readContext,
   validateContext,
@@ -9,28 +9,34 @@ import {
   contextSummary,
   readAttachment,
   entrySummary,
-} from '../src/renderer/debugging/data.js';
+} from '../dist/typescript/renderer/debugging/data.js';
 
 const config = APP_CONFIG.debugging;
+
 test('snippet display starts code on a new line without a content label', () => {
   const snippet = {
     filename: 'example.js',
     language: 'javascript',
     content: 'const x = 1;\nconsole.log(x);',
   };
+
   assert.equal(
     entrySummary(snippet, config.collections[0]),
     'Filename: example.js\nLanguage: javascript\n\nconst x = 1;\nconsole.log(x);',
   );
+
   const summary = contextSummary(
     { ...readContext(new Map(), config), attachments: [snippet] },
     config,
   );
+
   assert.ok(summary.includes('Language: javascript\n\nconst x = 1;'));
   assert.ok(!summary.includes('Content:'));
   assert.ok(!summary.includes('remove sensitive text'));
 });
+
 const blank = () => readContext(new Map(), config);
+
 const attachment = {
   filename: 'order-total.mjs',
   language: 'javascript',
@@ -41,6 +47,7 @@ const attempt = {
   outcome: 'no-change',
   notes: 'Still NaN',
 };
+
 const file = (bytes, name = 'example.js') => ({
   name,
   size: bytes.byteLength,
@@ -80,6 +87,7 @@ test('review validation enforces metadata, outcomes, URLs, counts and total byte
     attachments: [attachment],
     attemptEntries: [attempt],
   };
+
   assert.equal(validateContext(draft, config), draft);
   assert.throws(
     () =>
@@ -118,6 +126,7 @@ test('review validation enforces metadata, outcomes, URLs, counts and total byte
 test('reviewed changes retain unrelated updates and reject conflicting list replacements', () => {
   const base = blank();
   const draft = { ...base, attachments: [attachment] };
+
   assert.deepEqual(
     contextChanges(base, draft, { ...base, problem: 'Remote note' }),
     ['attachments'],
@@ -136,6 +145,7 @@ test('reviewed changes retain unrelated updates and reject conflicting list repl
 test('attachments, attempts and legacy notes round-trip through Yjs for late joiners', () => {
   const owner = new Y.Doc();
   const helper = new Y.Doc();
+
   try {
     const snapshot = {
       ...blank(),
@@ -143,6 +153,7 @@ test('attachments, attempts and legacy notes round-trip through Yjs for late joi
       attachments: [attachment],
       attemptEntries: [attempt],
     };
+
     owner.transact(() => {
       for (const [key, value] of Object.entries(snapshot))
         owner.getMap('debug-context').set(key, value);

@@ -14,6 +14,7 @@ test(
     const directory = await mkdtemp(path.join(tmpdir(), 'bytebridge-tls-'));
     const certFile = path.join(directory, 'cert.pem'),
       keyFile = path.join(directory, 'key.pem');
+
     execFileSync(
       'openssl',
       [
@@ -35,6 +36,7 @@ test(
       ],
       { stdio: 'ignore' },
     );
+
     const ca = await readFile(certFile);
     const child = spawn(process.execPath, ['scripts/server.mjs'], {
       env: {
@@ -49,14 +51,17 @@ test(
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let ws;
+
     try {
       const port = await new Promise((resolve, reject) => {
         const timer = setTimeout(
           () => reject(new Error('TLS server startup timeout')),
           8000,
         );
+
         child.stdout.on('data', (data) => {
           const match = String(data).match(/port (\d+)/);
+
           if (match) {
             clearTimeout(timer);
             resolve(Number(match[1]));
@@ -79,6 +84,7 @@ test(
           },
           (res) => {
             let body = '';
+
             res.on('data', (chunk) => {
               body += chunk;
             });
@@ -92,9 +98,11 @@ test(
             });
           },
         );
+
         req.on('error', reject);
         req.end();
       });
+
       await new Promise((resolve, reject) => {
         ws = new WebSocket(
           `wss://127.0.0.1:${port}/${room.id}?token=${room.token}`,
@@ -105,6 +113,7 @@ test(
       });
     } finally {
       ws?.terminate();
+
       if (child.exitCode === null)
         await new Promise((resolve) => {
           child.once('exit', resolve);

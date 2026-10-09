@@ -14,15 +14,19 @@ const key = randomBytes(32).toString('hex');
 const clients = [];
 let created = false;
 let origin;
+
 async function until(predicate, label) {
   for (let i = 0; i < 120; i++) {
     try {
       if (await predicate()) return;
     } catch {}
+
     await delay(100);
   }
+
   throw new Error(`Timed out: ${label}`);
 }
+
 async function api(route, method = 'GET', token) {
   const response = await fetch(origin + route, {
     method,
@@ -31,9 +35,12 @@ async function api(route, method = 'GET', token) {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
+
   if (!response.ok) throw new Error(`API status ${response.status}`);
+
   return response.json();
 }
+
 function client(id, token) {
   const doc = new Y.Doc();
   const provider = new WebsocketProvider(
@@ -43,16 +50,21 @@ function client(id, token) {
     { WebSocketPolyfill: WebSocket, params: { token }, disableBc: true },
   );
   const client = { doc, provider, text: doc.getText('monaco') };
+
   clients.push(client);
+
   return client;
 }
+
 function closeClients() {
   for (const client of clients) {
     client.provider.destroy();
     client.doc.destroy();
   }
+
   clients.length = 0;
 }
+
 try {
   await exec('docker', [
     'run',
@@ -68,18 +80,24 @@ try {
     image,
   ]);
   created = true;
+
   const { stdout } = await exec('docker', ['port', name, '1234/tcp']);
+
   origin = `http://${stdout.trim()}`;
   await until(
     async () => (await fetch(origin + '/health')).ok,
     'container healthy',
   );
+
   const rejected = await fetch(origin + '/rooms', { method: 'POST' });
+
   assert.equal(rejected.status, 403);
+
   const room = await api('/rooms', 'POST');
   const invite = await api(`/rooms/${room.id}/invites`, 'POST', room.token);
   const owner = client(room.id, room.token),
     guest = client(room.id, invite.token);
+
   await until(
     () => owner.provider.synced && guest.provider.synced,
     'clients sync',
@@ -98,7 +116,9 @@ try {
     async () => (await fetch(origin + '/health')).ok,
     'container restart',
   );
+
   const fresh = client(room.id, room.token);
+
   await until(
     () =>
       fresh.provider.synced &&
@@ -109,11 +129,14 @@ try {
 } catch (error) {
   if (created) {
     const logs = await exec('docker', ['logs', '--tail', '30', name]);
+
     console.error(logs.stdout, logs.stderr);
   }
+
   throw error;
 } finally {
   closeClients();
+
   if (created) {
     // Only this uniquely named test container and its anonymous test volume.
     await exec('docker', ['rm', '-f', '-v', name]);

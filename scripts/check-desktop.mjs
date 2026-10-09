@@ -1,22 +1,29 @@
-import { app, BrowserWindow, Menu, clipboard, dialog } from 'electron';
-import { spawn, spawnSync } from 'node:child_process';
+import { app, BrowserWindow, dialog } from 'electron';
+import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import assert from 'node:assert/strict';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+import WebSocket from 'ws';
+import { checkWorkspace } from './check-workspace.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = await mkdtemp(path.join(tmpdir(), 'bytebridge-phase1-'));
 const results = [];
+
 const report = (name, detail) => {
   results.push({ name, detail });
   console.log(name, JSON.stringify(detail));
 };
+
 let server,
   origin,
   port = 0;
+
 async function startServer() {
   server = spawn(process.execPath, [path.join(root, 'scripts/server.mjs')], {
     env: {
@@ -34,8 +41,10 @@ async function startServer() {
       () => reject(new Error('Server start timeout')),
       8000,
     );
+
     server.stdout.on('data', (data) => {
       const match = String(data).match(/port (\d+)/);
+
       if (match) {
         port = Number(match[1]);
         origin = `http://127.0.0.1:${port}`;
@@ -50,44 +59,56 @@ async function startServer() {
     server.once('error', reject);
   });
 }
+
 async function stopServer() {
   if (!server || server.exitCode !== null) return;
+
   await new Promise((resolve) => {
     server.once('exit', resolve);
     server.kill('SIGTERM');
   });
 }
+
 await startServer();
+
 const create = async () => {
   const response = await fetch(`${origin}/rooms`, {
     method: 'POST',
     headers: { 'X-Creation-Key': 'desktop-test-key' },
   });
+
   return { ...(await response.json()), server: origin };
 };
+
 const fixture = await create();
+
 async function invite(room) {
   const response = await fetch(`${origin}/rooms/${room.id}/invites`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${room.token}` },
   });
   const invitation = await response.json();
+
   return {
     ...invitation,
     url: `myapp://join?${new URLSearchParams({ room: room.id, server: origin, token: invitation.token })}`,
   };
 }
+
 const launchInvite = await invite(fixture);
 const setPath = app.setPath.bind(app);
+
 app.setPath = (name, value) =>
   setPath(name, name === 'userData' ? output : value);
 app.setPath('userData', output);
 app.setAsDefaultProtocolClient = () => false;
+
 const loadFile = BrowserWindow.prototype.loadFile;
 let loaded;
 const hostLoaded = new Promise((resolve) => {
   loaded = resolve;
 });
+
 BrowserWindow.prototype.loadFile = async function (file, options = {}) {
   // Assertions inspect rendered Monaco text in windows behind the active client.
   this.webContents.setBackgroundThrottling(false);
@@ -95,85 +116,82 @@ BrowserWindow.prototype.loadFile = async function (file, options = {}) {
   this.webContents.on('console-message', (event) => {
     if (event.level === 'error') report('renderer-error', event.message);
   });
+
   const result = await loadFile.call(this, file, options);
+
   loaded();
+
   return result;
 };
 await import('../dist/main/main.js');
+
 const cold = process.argv.includes('--cold-invite');
+
 if (cold) app.emit('open-url', { preventDefault() {} }, launchInvite.url);
 
 const js = (win, code) => win.webContents.executeJavaScript(code, true);
+
 async function until(win, code, label) {
   for (let i = 0; i < 120; i++) {
     if (await js(win, code)) return;
+
     await delay(100);
   }
+
   throw new Error(`Timed out: ${label}`);
 }
+
 async function fill(win, id, value) {
   await js(
     win,
     `document.getElementById(${JSON.stringify(id)}).value = ${JSON.stringify(value)}`,
   );
 }
-async function join(win, name, enter = true) {
+
+async function join(win, name) {
   await fill(win, 'name-input', name);
-  await js(win, `document.getElementById('join-button').click()`);
+  await js(win, "document.getElementById('join-button').click()");
   await until(
     win,
-    `document.getElementById('name-modal').style.display === 'none' && document.getElementById('connection-status').textContent === 'Connected'`,
+    "document.getElementById('name-modal').style.display === 'none' && document.getElementById('connection-status').textContent === 'Connected'",
     'join',
   );
   assert.equal(
     await js(
       win,
-      `!document.getElementById('room-overview').hidden &&
-       !document.getElementById('debug-context').hidden &&
-       document.querySelectorAll('.monaco-editor').length === 0`,
+      "document.getElementById('room-overview').hidden && !document.getElementById('files-panel').hidden && document.querySelectorAll('#editor .monaco-editor').length === 1",
     ),
     true,
   );
-  if (!enter) return;
-  await js(win, `document.getElementById('enter-editor').click()`);
   assert.equal(
-    await js(win, `document.querySelectorAll('.monaco-editor').length`),
-    1,
-  );
-}
-async function timelineEntry(win, type, title, options = {}) {
-  await js(
-    win,
-    `if (document.getElementById('investigation-panel').hidden) {
-       document.getElementById('open-timeline').click();
-     }
-     document.getElementById('add-timeline').click();`,
-  );
-  await fill(win, 'timeline-type', type);
-  await js(
-    win,
-    `document.getElementById('timeline-type').dispatchEvent(new Event('change'))`,
-  );
-  await fill(win, 'timeline-title', title);
-  await fill(win, 'timeline-notes', options.notes || 'Investigation notes');
-  if (options.parentId) await fill(win, 'timeline-parent', options.parentId);
-  if (options.output) await fill(win, 'timeline-output', options.output);
-  if (options.outcome) await fill(win, 'timeline-outcome', options.outcome);
-  await js(win, `document.getElementById('review-timeline').click()`);
-  assert.equal(
-    await js(win, `!document.getElementById('timeline-preview').hidden`),
+    await js(
+      win,
+      "document.getElementById('open-resolution') === null && document.getElementById('open-timeline') === null",
+    ),
     true,
   );
-  await js(win, `document.getElementById('share-timeline').click()`);
-  assert.equal(
-    await js(win, `document.getElementById('timeline-form').hidden`),
-    true,
-  );
-  return js(
+}
+
+async function problem(win) {
+  await js(
     win,
-    `document.querySelector('#timeline-events li:last-child').dataset.eventId`,
+    "if(document.getElementById('debug-context').hidden) document.getElementById('open-context').click()",
   );
 }
+
+async function timelineEntry(win) {
+  await problem(win);
+  await js(
+    win,
+    "document.getElementById('problem-history').open = true; document.getElementById('save-checkpoint').click()",
+  );
+  await until(
+    win,
+    "document.getElementById('problem-history-status').textContent.includes('Checkpoint saved')",
+    'checkpoint saved',
+  );
+}
+
 async function type(win, value) {
   win.show();
   win.focus();
@@ -187,6 +205,7 @@ async function type(win, value) {
   })()`,
     'editor laid out and ready for native input',
   );
+
   const point = await js(
     win,
     `(() => {
@@ -194,6 +213,7 @@ async function type(win, value) {
        return { x: Math.round(r.x + 10), y: Math.round(r.y + 10) };
      })()`,
   );
+
   win.webContents.sendInputEvent({
     type: 'mouseDown',
     button: 'left',
@@ -206,11 +226,14 @@ async function type(win, value) {
     clickCount: 1,
     ...point,
   });
+
   for (const keyCode of value)
     win.webContents.sendInputEvent({ type: 'char', keyCode });
+
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Space' });
   await delay(350);
 }
+
 async function snapshot(win, name) {
   await js(
     win,
@@ -221,6 +244,7 @@ async function snapshot(win, name) {
     (await win.webContents.capturePage()).toPNG(),
   );
 }
+
 async function guestWindow(partition) {
   const win = new BrowserWindow({
     width: 1100,
@@ -230,942 +254,443 @@ async function guestWindow(partition) {
       preload: path.join(root, 'dist/preload/preload.js'),
     },
   });
+
   await win.loadFile(path.join(root, 'dist/renderer/index.html'));
   await delay(200);
+
   return win;
 }
-let clipboardFormats;
+
 app.whenReady().then(async () => {
   try {
     await hostLoaded;
+
     const host = BrowserWindow.getAllWindows()[0];
-    await delay(500);
-    await snapshot(host, 'welcome');
+
+    await delay(400);
+
     if (cold) {
       await join(host, 'Cold guest');
       assert.match(
-        await js(host, `document.getElementById('room-label').title`),
+        await js(host, "document.getElementById('room-label').title"),
         new RegExp(fixture.id),
       );
-      report('cold-invitation', 'PASS: authenticated intended room');
+      report(
+        'cold-invitation',
+        'PASS: intended room opens directly in the editor',
+      );
+
       return;
     }
+
     for (const dismiss of [
-      `document.getElementById('close-join').click()`,
-      `document.getElementById('name-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`,
-      `document.getElementById('name-modal').click()`,
-      `document.getElementById('cancel-join').click()`,
+      "document.getElementById('close-join').click()",
+      "document.getElementById('name-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))",
+      "document.getElementById('name-modal').click()",
+      "document.getElementById('cancel-join').click()",
     ]) {
       await js(host, dismiss);
       assert.equal(
         await js(
           host,
-          `document.getElementById('name-modal').style.display === 'none' &&
-           !document.getElementById('workspace').inert &&
-           !document.getElementById('empty-workspace').hidden`,
+          "document.getElementById('name-modal').style.display === 'none' && !document.getElementById('workspace').inert",
         ),
         true,
       );
-      await js(host, `document.getElementById('create-room').click()`);
+      await js(host, "document.getElementById('create-room').click()");
     }
-    // Hold a real creation response until after dismissal; it must not navigate.
+
     await fill(host, 'server-input', origin);
     await fill(host, 'creation-key', 'desktop-test-key');
-    await fill(host, 'name-input', 'Cancelled owner');
-    await js(
-      host,
-      `window.originalFetch = window.fetch; window.fetch = async (...args) => {
-      const response = await window.originalFetch(...args);
-      if (args[1]?.method === 'POST') {
-        await new Promise(resolve => {
-          window.releaseCreation = resolve;
-        });
-      }
-      return response;
-    }; document.getElementById('join-button').click()`,
-    );
-    await until(
-      host,
-      `typeof window.releaseCreation === 'function'`,
-      'held creation response',
-    );
-    await js(
-      host,
-      `document.getElementById('close-join').click();
-       document.getElementById('open-join').click();
-       window.fetch = window.originalFetch;
-       window.releaseCreation();`,
-    );
-    await until(
-      host,
-      `JSON.parse(localStorage.getItem('bytebridge-rooms') || '[]').length === 1`,
-      'cancelled owner credential retained',
-    );
-    assert.equal(
-      await js(
-        host,
-        `document.getElementById('name-modal').style.display === 'flex' &&
-         document.getElementById('room-mode').value === 'join' &&
-         document.querySelectorAll('.monaco-editor').length === 0 &&
-         !document.getElementById('join-button').disabled`,
-      ),
-      true,
-    );
-    await js(
-      host,
-      `document.getElementById('cancel-join').click(); document.getElementById('create-room').click()`,
-    );
-    assert.equal(
-      await js(host, `document.getElementById('join-title').textContent`),
-      'Create a shared space',
-    );
-    report(
-      'dialog-dismissal',
-      'PASS: first-launch close, Escape, backdrop, cancel, and stale creation response',
-    );
-    await fill(host, 'server-input', origin);
-    await fill(host, 'creation-key', 'desktop-test-key');
-    await fill(host, 'room-title', 'Phase 1 workspace');
+    await fill(host, 'room-title', 'Simple workspace');
     await join(host, 'Owner');
-    await type(host, 'shared code');
-    await js(
+
+    const room = await js(
       host,
-      `document.getElementById('open-join').focus();
-       document.getElementById('open-join').click();
-       document.getElementById('close-join').click();`,
+      "JSON.parse(localStorage.getItem('bytebridge-rooms')).at(-1)",
+    );
+    const invitation = await invite(room);
+    const peer = await guestWindow('simplified-peer');
+
+    await js(peer, "document.getElementById('open-join').click()");
+    await fill(peer, 'invite-input', invitation.url);
+    await join(peer, 'Helper');
+    assert.equal(
+      await js(host, "document.getElementById('open-project').disabled"),
+      false,
     );
     assert.equal(
-      await js(
-        host,
-        `document.querySelectorAll('.monaco-editor').length === 1 &&
-         document.querySelector('.view-lines').textContent.includes('shared') &&
-         document.activeElement.id === 'open-join' &&
-         !document.getElementById('workspace').inert`,
-      ),
+      await js(peer, "document.getElementById('manage-invites').hidden"),
       true,
     );
+    await type(host, '// owner ');
+    await until(
+      peer,
+      "document.querySelector('#editor .view-lines').textContent.includes('owner')",
+      'owner edit',
+    );
+    await type(peer, '// helper ');
+    await until(
+      host,
+      "document.querySelector('#editor .view-lines').textContent.includes('helper')",
+      'peer edit',
+    );
     report(
-      'dialog-active-room',
-      'PASS: dismissal preserves editor and restores focus',
+      'entry-and-collaboration',
+      'PASS: Files immediately available to owner/editor; two-way editing',
     );
-    clipboardFormats = clipboard
-      .availableFormats()
-      .map((format) => [format, clipboard.readBuffer(format)]);
-    await js(host, `document.getElementById('copy-invite').click()`);
-    await until(
-      host,
-      `document.getElementById('room-notice').textContent.startsWith('Invitation copied')`,
-      'copy invite',
-    );
-    const invitation = clipboard.readText();
-    const guest = await guestWindow('phase1-guest');
-    await js(
-      guest,
-      `document.getElementById('room-mode').value = 'join'; document.getElementById('room-mode').dispatchEvent(new Event('change'))`,
-    );
-    await fill(guest, 'invite-input', invitation);
-    await join(guest, 'Collaborator');
-    await until(
-      guest,
-      `document.querySelector('.view-lines').textContent.includes('shared')`,
-      'shared content',
-    );
-    await type(guest, 'guest ');
-    await until(
-      host,
-      `document.getElementById('remote-cursor-name').textContent === 'Collaborator is typing…'`,
-      'typing indicator',
+    await problem(host);
+    await js(host, "document.getElementById('edit-context').click()");
+    assert.equal(
+      await js(host, "document.getElementById('context-overview').hidden"),
+      true,
     );
     assert.equal(
-      await js(
-        guest,
-        `document.getElementById('remote-cursor-name').textContent`,
-      ),
+      await js(host, "document.getElementById('context-problem').value"),
       '',
     );
-    await until(
-      host,
-      `document.getElementById('remote-cursor-name').textContent === ''`,
-      'typing idle timeout',
-    );
-    guest.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Right' });
-    guest.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Right' });
-    await delay(200);
     assert.equal(
       await js(
         host,
-        `document.getElementById('remote-cursor-name').textContent`,
-      ),
-      '',
-    );
-    report(
-      'typing-presence',
-      'PASS: local edits notify peers, not self; idle timeout and navigation filtering',
-    );
-    await until(
-      host,
-      `document.querySelector('.view-lines').textContent.includes('guest')`,
-      'guest edits',
-    );
-    assert.equal(
-      await js(guest, `document.getElementById('copy-invite').disabled`),
-      true,
-    );
-    report(
-      'owner-and-editor',
-      'PASS: invitation join, two-way editing, owner-only controls',
-    );
-    await snapshot(host, 'workspace');
-
-    await js(
-      host,
-      `document.getElementById('open-context').click(); document.getElementById('edit-context').click()`,
-    );
-    assert.equal(
-      await js(host, `document.getElementById('context-overview').hidden`),
-      true,
-    );
-    await js(host, `document.getElementById('discard-context').click()`);
-    assert.equal(
-      await js(
-        host,
-        `!document.getElementById('context-overview').hidden && document.getElementById('context-overview').innerText.includes('Not provided yet')`,
-      ),
-      true,
-    );
-    await js(host, `document.getElementById('edit-context').click()`);
-    assert.equal(
-      await js(host, `document.getElementById('context-overview').hidden`),
-      true,
-    );
-    await fill(host, 'context-problem', 'Order preview shows NaN');
-    await fill(host, 'context-expected', 'Reject formatted prices clearly');
-    await fill(host, 'context-attempts', 'Refreshing the preview did not help');
-    const detectedLanguages = await js(
-      host,
-      `(() => {
-      document.getElementById('add-attachments').click();
-      const row = document.querySelector('[data-collection="attachments"] .context-entry');
-      const filename = row.querySelector('[data-field="filename"]');
-      const language = row.querySelector('[data-field="language"]');
-      filename.value = 'main.RS';
-      filename.dispatchEvent(new Event('input', { bubbles: true }));
-      const automatic = language.value;
-      language.value = 'python';
-      language.dispatchEvent(new Event('change', { bubbles: true }));
-      filename.value = 'main.go';
-      filename.dispatchEvent(new Event('input', { bubbles: true }));
-      const manual = language.value;
-      row.querySelector('button').click();
-      return [automatic, manual];
-    })()`,
-    );
-    assert.deepEqual(detectedLanguages, ['rust', 'python']);
-    report(
-      'attachment-languages',
-      'PASS: filename detection and manual override',
-    );
-    const demoCode = await readFile(
-      path.join(root, 'examples/debugging-handover/order-total.mjs'),
-      'utf8',
-    );
-    const demoRun = spawnSync(
-      process.execPath,
-      [
-        '--test',
-        path.join(root, 'examples/debugging-handover/order-total.test.mjs'),
-      ],
-      { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, encoding: 'utf8' },
-    );
-    assert.equal(demoRun.status, 1, 'demo remains intentionally failing');
-    await fill(
-      host,
-      'context-actual',
-      'Display-formatted price 1,200.00 produces NaN',
-    );
-    await fill(
-      host,
-      'context-steps',
-      'Run node --test examples/debugging-handover/order-total.test.mjs',
-    );
-    await fill(host, 'context-logs', demoRun.stdout);
-    await js(
-      host,
-      `(() => {
-      const transfer = new DataTransfer();
-      transfer.items.add(new File([${JSON.stringify(demoCode)}], 'order-total.mjs', {type: 'text/javascript'}));
-      const input = document.getElementById('context-file');
-      input.files = transfer.files;
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-    })()`,
-    );
-    await until(
-      host,
-      `document.querySelector('[data-collection="attachments"] [data-field="filename"]')?.value === 'order-total.mjs'`,
-      'selected file loaded into private draft',
-    );
-    await js(
-      host,
-      `document.getElementById('add-attemptEntries').click();
-      document.querySelector('[data-field="action"]').value = 'Refresh preview';
-      document.querySelector('[data-field="outcome"]').value = 'no-change';
-      document.querySelector('[data-field="notes"]').value = 'Still NaN after refreshing';`,
-    );
-    await js(guest, `document.getElementById('open-context').click()`);
-    assert.equal(
-      await js(
-        guest,
-        `document.getElementById('debug-context').textContent.includes('Order preview shows NaN')`,
+        "document.getElementById('context-steps').closest('details').open",
       ),
       false,
     );
-    await js(host, `document.getElementById('review-context').click()`);
+    await fill(host, 'context-problem', 'Checkout fails');
+    await fill(host, 'context-expected', 'An order is created');
+    await problem(peer);
     assert.equal(
       await js(
-        host,
-        `document.getElementById('context-preview').textContent.includes('Order preview shows NaN')`,
-      ),
-      true,
-    );
-    await js(host, `document.getElementById('share-context').click()`);
-    await until(
-      guest,
-      `document.getElementById('debug-context').textContent.includes('Order preview shows NaN')`,
-      'shared debugging context',
-    );
-    await js(host, `document.getElementById('open-context').click()`);
-    await js(guest, `document.getElementById('open-context').click()`);
-    const hypothesis = await timelineEntry(
-      host,
-      'hypothesis',
-      'Formatted price conversion causes NaN',
-    );
-    const experiment = await timelineEntry(
-      host,
-      'experiment',
-      'Run price contract test',
-      { parentId: hypothesis, output: demoRun.stdout },
-    );
-    await timelineEntry(host, 'checkpoint', 'Before investigation edit', {
-      parentId: experiment,
-    });
-    await js(host, `document.getElementById('close-timeline').click()`);
-    await type(guest, 'checkpoint change ');
-    await until(
-      host,
-      `document.querySelector('#editor .view-lines').textContent.includes('checkpoint')`,
-      'checkpoint edit synchronized',
-    );
-    await timelineEntry(host, 'checkpoint', 'After investigation edit', {
-      parentId: experiment,
-    });
-    await timelineEntry(host, 'outcome', 'Price test failed', {
-      parentId: experiment,
-      outcome: 'failed',
-      notes: 'Expected rejection, got NaN',
-      output: demoRun.stdout,
-    });
-    await until(
-      guest,
-      `document.querySelectorAll('#timeline-events li').length === 5`,
-      'timeline sync',
-    );
-    await js(host, `document.getElementById('close-timeline').click()`);
-    await until(
-      host,
-      `document.querySelector('#editor .view-lines').textContent.includes('checkpoint')`,
-      'live editor before diff',
-    );
-    const liveBeforeDiff = await js(
-      host,
-      `document.querySelector('#editor .view-lines').textContent`,
-    );
-    await js(
-      host,
-      `document.getElementById('open-timeline').click(); document.getElementById('compare-checkpoints').click()`,
-    );
-    await until(
-      host,
-      `!!document.querySelector('#checkpoint-diff .monaco-diff-editor')`,
-      'read-only historical diff',
-    );
-    await js(
-      host,
-      `document.getElementById('checkpoint-diff').scrollIntoView({block:'center'})`,
-    );
-    await snapshot(host, 'timeline-diff');
-    await js(host, `document.getElementById('close-timeline').click()`);
-    await until(
-      host,
-      `document.querySelector('#editor .view-lines').textContent.includes('checkpoint')`,
-      'live editor after diff',
-    );
-    assert.equal(
-      await js(
-        host,
-        `document.querySelector('#editor .view-lines').textContent`,
-      ),
-      liveBeforeDiff,
-    );
-    await js(host, `document.getElementById('open-context').click()`);
-    assert.equal(
-      await js(host, `document.querySelectorAll('.monaco-editor').length`),
-      1,
-    );
-    await js(guest, `document.getElementById('open-context').click()`);
-    report(
-      'timeline-and-diff',
-      'PASS: linked events sync; comparing frozen checkpoints leaves live document unchanged and disposes history editors',
-    );
-    const helper = await guestWindow('phase2-helper');
-    assert.equal(
-      await js(host, `!document.getElementById('context-overview').hidden`),
-      true,
-    );
-    report(
-      'context-edit-view',
-      'PASS: overview hidden during editing and restored after discard/share',
-    );
-    await js(
-      helper,
-      `document.getElementById('room-mode').value = 'join'; document.getElementById('room-mode').dispatchEvent(new Event('change'))`,
-    );
-    await fill(helper, 'invite-input', invitation);
-    await join(helper, 'Handover helper', false);
-    await until(
-      helper,
-      `document.querySelectorAll('#timeline-events li').length === 5`,
-      'late helper timeline',
-    );
-    const catchupText = await js(
-      helper,
-      `document.getElementById('timeline-catchup').textContent`,
-    );
-    assert.match(catchupText, /Run price contract test: failed/);
-    assert.match(catchupText, /Formatted price conversion causes NaN/);
-    assert.match(catchupText, /Order preview shows NaN/);
-    report(
-      'timeline-catchup',
-      'PASS: late helper sees original issue, reported results, and open hypothesis',
-    );
-    await until(
-      helper,
-      `document.getElementById('debug-context').textContent.includes('order-total.mjs')`,
-      'handover overview',
-    );
-    const overviewText = await js(
-      helper,
-      `document.getElementById('debug-context').textContent`,
-    );
-    for (const evidence of [
-      'Order preview shows NaN',
-      'Reject formatted prices clearly',
-      'item.price * item.quantity',
-      'javascript',
-      'Refresh preview',
-      'no-change',
-      'Still NaN after refreshing',
-      'not ok',
-    ])
-      assert.ok(overviewText.includes(evidence), evidence);
-    await snapshot(helper, 'phase2-handover-overview');
-    await js(helper, `document.getElementById('enter-editor').click()`);
-    assert.equal(
-      await js(helper, `document.querySelectorAll('.monaco-editor').length`),
-      1,
-    );
-    report(
-      'phase2-handover',
-      'PASS: late helper sees demo code, metadata, actual failing output, reproduction, and structured attempts before editor entry',
-    );
-    await js(
-      host,
-      `document.getElementById('edit-context').click();
-      document.getElementById('add-attachments').click();
-      (() => { const row = document.querySelector('[data-collection="attachments"] .context-entry:last-child');
-      row.querySelector('[data-field="filename"]').value = 'private.txt';
-      row.querySelector('[data-field="content"]').value = 'private-only-marker';
-      })();
-      document.getElementById('review-context').click()`,
-    );
-    assert.equal(
-      await js(
-        host,
-        `!document.getElementById('share-context').hidden && document.getElementById('context-preview').textContent.includes('private-only-marker')`,
-      ),
-      true,
-    );
-    await js(
-      host,
-      `document.querySelector('[data-collection="attachments"] .context-entry:last-child button').click()`,
-    );
-    assert.equal(
-      await js(host, `document.getElementById('share-context').hidden`),
-      true,
-    );
-    await js(host, `document.getElementById('review-context').click()`);
-    assert.equal(
-      await js(
-        host,
-        `document.getElementById('context-preview').textContent.includes('private-only-marker')`,
+        peer,
+        "document.getElementById('context-overview').textContent.includes('Checkout fails')",
       ),
       false,
     );
-    await js(host, `document.getElementById('share-context').click()`);
+    await js(host, "document.getElementById('review-context').click()");
+    await until(
+      peer,
+      "document.getElementById('context-overview').textContent.includes('Checkout fails')",
+      'one-action problem sharing',
+    );
+    await js(host, "document.getElementById('edit-context').click()");
+    await fill(host, 'context-problem', 'discarded private draft');
+    await js(host, "document.getElementById('discard-context').click()");
     assert.equal(
       await js(
-        guest,
-        `document.getElementById('debug-context').textContent.includes('private-only-marker')`,
+        host,
+        "document.getElementById('context-overview').textContent.includes('discarded private draft')",
       ),
       false,
     );
-    report(
-      'attachment-review',
-      'PASS: removing a draft attachment invalidates review and excludes it from sharing',
+    // Concurrent edits to the same field must not overwrite the other person's update.
+    await js(host, "document.getElementById('edit-context').click()");
+    await js(peer, "document.getElementById('edit-context').click()");
+    await fill(peer, 'context-problem', 'Helper updated problem');
+    await js(peer, "document.getElementById('review-context').click()");
+    await until(
+      host,
+      "document.getElementById('context-overview').textContent.includes('Helper updated problem')",
+      'concurrent context update',
     );
-    await js(host, `document.getElementById('open-context').click()`);
-    await js(guest, `document.getElementById('open-context').click()`);
+    await fill(host, 'context-problem', 'stale owner draft');
+    await js(host, "document.getElementById('review-context').click()");
+    await until(
+      host,
+      "document.getElementById('context-status').textContent.includes('teammate changed')",
+      'conflict surfaced',
+    );
+    await js(
+      host,
+      "document.getElementById('discard-context').click(); document.getElementById('edit-context').click(); document.getElementById('context-steps').closest('details').open = true; document.getElementById('add-attachments').click()",
+    );
+    await js(
+      host,
+      "const row=document.querySelector('[data-collection=attachments] .context-entry'); row.querySelector('[data-field=filename]').value='bug.py'; row.querySelector('[data-field=filename]').dispatchEvent(new Event('input')); row.querySelector('[data-field=content]').value='print(42)';",
+    );
+    assert.equal(
+      await js(host, "document.querySelector('[data-field=language]').value"),
+      'python',
+    );
+    await js(host, "document.getElementById('review-context').click()");
+    await until(
+      peer,
+      "document.getElementById('context-overview').textContent.includes('bug.py')",
+      'snippet shared',
+    );
     report(
-      'debug-context',
-      'PASS: draft stays local; reviewed context syncs to teammate',
+      'simple-problem',
+      'PASS: two primary fields, optional details, private drafts, discard, one-action share, conflicts and language detection',
     );
 
-    await js(
-      host,
-      `document.getElementById('open-resolution').click(); document.getElementById('edit-resolution').click()`,
+    // Seed genuine legacy records through the existing protocol, not renderer globals.
+    const legacyDoc = new Y.Doc();
+    const seed = new WebsocketProvider(
+      origin.replace(/^http/, 'ws'),
+      room.id,
+      legacyDoc,
+      {
+        WebSocketPolyfill: WebSocket,
+        disableBc: true,
+        params: { token: room.token },
+      },
     );
-    await fill(
-      host,
-      'resolution-cause',
-      'Implicit conversion accepts display-formatted prices',
-    );
-    await fill(
-      host,
-      'resolution-fix',
-      'Validate finite nonnegative decimal prices before multiplication',
-    );
-    await fill(
-      host,
-      'resolution-evidence',
-      'Linked test output documents the failure. The fix is participant-reported.',
-    );
-    await fill(
-      host,
-      'resolution-uncertainty',
-      'Independent verification of the fix is still needed',
-    );
-    await fill(host, 'resolution-tags', 'prices, validation');
-    await js(
-      host,
-      `document.getElementById('resolution-before').selectedIndex = 1;
-       document.getElementById('resolution-after').selectedIndex = 2;
-       document.getElementById('resolution-evidence-ids').options[0].selected = true;
-       document.getElementById('review-resolution').click();`,
-    );
-    assert.equal(
-      await js(
-        guest,
-        `document.getElementById('resolution-badge').textContent`,
-      ),
-      'Open',
-    );
-    await js(host, `document.getElementById('share-resolution').click()`);
-    await until(
-      guest,
-      `document.getElementById('resolution-badge').textContent.includes('Resolved')`,
-      'resolution shared',
-    );
-    assert.equal(
-      await js(
-        host,
-        `document.getElementById('editor').getBoundingClientRect().height > 180 &&
-         document.getElementById('editor').getBoundingClientRect().width > 250 &&
-         document.querySelectorAll('#inspector > :not([hidden])').length === 1`,
-      ),
-      true,
-    );
-    await snapshot(host, 'phase4-resolution-desktop');
-    const initialWidth = await js(
-      host,
-      `document.getElementById('inspector').getBoundingClientRect().width`,
-    );
-    const divider = await js(
-      host,
-      `(() => {
-         const r = document.getElementById('panel-resizer').getBoundingClientRect();
-         return {
-           x: Math.round(r.x + r.width / 2),
-           y: Math.round(r.y + r.height / 2),
-         };
-       })()`,
-    );
-    host.focus();
-    host.webContents.sendInputEvent({
-      type: 'mouseDown',
-      button: 'left',
-      clickCount: 1,
-      ...divider,
-    });
-    host.webContents.sendInputEvent({
-      type: 'mouseMove',
-      x: divider.x + 90,
-      y: divider.y,
-    });
-    host.webContents.sendInputEvent({
-      type: 'mouseUp',
-      button: 'left',
-      clickCount: 1,
-      x: divider.x + 90,
-      y: divider.y,
-    });
-    await until(
-      host,
-      `document.getElementById('inspector').getBoundingClientRect().width > ${initialWidth + 50}`,
-      'drag panel width',
-    );
-    const resizedWidth = await js(
-      host,
-      `document.getElementById('inspector').getBoundingClientRect().width`,
-    );
-    await js(
-      host,
-      `document.getElementById('panel-resizer').dispatchEvent(new KeyboardEvent('keydown', {key: 'End', bubbles: true}))`,
-    );
-    assert.equal(
-      await js(
-        host,
-        `document.getElementById('editor-panel').getBoundingClientRect().width >= 299`,
-      ),
-      true,
-    );
-    await js(
-      host,
-      `document.getElementById('panel-resizer').dispatchEvent(new MouseEvent('dblclick', {bubbles: true}))`,
-    );
-    await until(
-      host,
-      `Math.abs(document.getElementById('inspector').getBoundingClientRect().width - ${initialWidth}) < 2`,
-      'reset panel width',
-    );
-    assert.ok(resizedWidth > initialWidth);
-    await js(host, `document.getElementById('compare-resolution').click()`);
-    await until(
-      host,
-      `!document.getElementById('resolution-diff').hidden && document.getElementById('resolution-diff').querySelector('.monaco-diff-editor') !== null`,
-      'linked resolution diff',
-    );
-    await js(
-      host,
-      `document.getElementById('close-resolution').click(); document.getElementById('open-resolution').click()`,
-    );
-    assert.equal(
-      await js(host, `document.getElementById('resolution-diff').hidden`),
-      true,
-    );
-    host.setSize(780, 760);
-    await delay(250);
-    assert.equal(
-      await js(
-        host,
-        `document.documentElement.scrollWidth <= window.innerWidth && document.getElementById('editor').getBoundingClientRect().height > 80`,
-      ),
-      true,
-    );
-    await snapshot(host, 'phase4-resolution-narrow');
-    assert.equal(
-      await js(
-        host,
-        `document.getElementById('panel-resizer').getAttribute('aria-orientation')`,
-      ),
-      'horizontal',
-    );
-    const initialHeight = await js(
-      host,
-      `document.getElementById('inspector').getBoundingClientRect().height`,
-    );
-    await js(
-      host,
-      `document.getElementById('panel-resizer').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', bubbles: true}))`,
-    );
-    assert.ok(
-      await js(
-        host,
-        `document.getElementById('inspector').getBoundingClientRect().height > ${initialHeight}`,
-      ),
-    );
-    assert.ok(
-      await js(
-        host,
-        `JSON.parse(localStorage.getItem('bytebridge-panel-sizes')).height > 0`,
-      ),
-    );
-    await js(host, `document.getElementById('close-resolution').click()`);
-    await until(
-      host,
-      `document.getElementById('panel-resizer').hidden`,
-      'divider hidden without a panel',
-    );
-    await js(host, `document.getElementById('open-resolution').click()`);
-    await until(
-      host,
-      `!document.getElementById('panel-resizer').hidden`,
-      'divider returns with panel',
-    );
-    report(
-      'resizable-panels',
-      'PASS: pointer drag, keyboard bounds, reset, saved size, narrow height and closed-panel layout',
-    );
-    host.setSize(1200, 800);
-    await js(host, `document.getElementById('export-resolution').click()`);
-    const exportedPreview = await js(
-      host,
-      `document.getElementById('resolution-markdown').value`,
-    );
-    for (const phrase of [
-      'Implicit conversion',
-      'Independent verification',
-      'not independently verified',
-      'Code comparison',
-    ])
-      assert.ok(exportedPreview.includes(phrase), phrase);
-    assert.ok(!exportedPreview.includes(invitation));
-    const originalSave = dialog.showSaveDialog;
+
     try {
-      dialog.showSaveDialog = async () => ({ canceled: true });
-      await js(host, `document.getElementById('save-resolution').click()`);
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error('Legacy seed timeout')),
+          8000,
+        );
+
+        seed.on('sync', (synced) => {
+          if (synced) {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+      });
+      legacyDoc.getArray('investigation-events').push([
+        {
+          id: 'legacy-experiment',
+          type: 'experiment',
+          title: 'Legacy experiment',
+          notes: 'Prior reasoning',
+          output: 'Legacy failing output',
+          author: 'Earlier teammate',
+          createdAt: 1,
+          parentId: null,
+        },
+      ]);
+      legacyDoc.getArray('resolution-events').push([
+        {
+          id: 'legacy-resolution',
+          type: 'resolution',
+          cause: 'Legacy root cause',
+          fix: 'Legacy fix',
+          evidence: 'Previous evidence',
+          uncertainty: '',
+          tags: ['legacy'],
+          evidenceIds: ['legacy-experiment'],
+          beforeId: null,
+          afterId: null,
+          author: 'Earlier teammate',
+          createdAt: 2,
+        },
+        {
+          id: 'legacy-reopen',
+          type: 'reopen',
+          reason: 'Needs another look',
+          author: 'Earlier teammate',
+          createdAt: 3,
+        },
+      ]);
+      legacyDoc
+        .getMap('debug-context')
+        .set('attemptEntries', [
+          { action: 'Legacy attempt', outcome: 'failed', notes: 'Preserved' },
+        ]);
       await until(
         host,
-        `document.getElementById('resolution-status').textContent === 'Export canceled.'`,
+        "document.getElementById('problem-history-list').textContent.includes('Legacy root cause') && document.getElementById('problem-history-list').textContent.includes('Legacy failing output')",
+        'legacy history retained',
+      );
+    } finally {
+      seed.destroy();
+      legacyDoc.destroy();
+    }
+
+    await timelineEntry(host);
+    await type(peer, '// after checkpoint ');
+    await until(
+      host,
+      "document.querySelector('#editor .view-lines').textContent.includes('after')",
+      'checkpoint edit',
+    );
+    await timelineEntry(host);
+    await js(
+      host,
+      "document.getElementById('checkpoint-before').selectedIndex=1; document.getElementById('checkpoint-after').selectedIndex=2; document.getElementById('compare-checkpoints').click()",
+    );
+    await until(
+      host,
+      "document.querySelector('#checkpoint-diff .monaco-diff-editor') !== null",
+      'checkpoint diff',
+    );
+    await js(host, "document.getElementById('open-context').click()");
+    assert.equal(
+      await js(
+        host,
+        "document.querySelector('#checkpoint-diff .monaco-diff-editor') === null",
+      ),
+      true,
+    );
+    await problem(host);
+    await js(host, "document.getElementById('mark-solved').click()");
+    await fill(host, 'solved-note', 'Corrected the checkout condition');
+    assert.equal(
+      await js(
+        peer,
+        "document.getElementById('problem-fix').textContent.includes('Corrected')",
+      ),
+      false,
+    );
+    await js(host, "document.getElementById('confirm-solved').click()");
+    await until(
+      peer,
+      "document.getElementById('resolution-badge').textContent.includes('Solved') && document.getElementById('problem-fix').textContent.includes('Corrected')",
+      'solved status sync',
+    );
+    await js(peer, "document.getElementById('reopen-problem').click()");
+    await until(
+      host,
+      "document.getElementById('resolution-badge').textContent === 'Open'",
+      'reopened',
+    );
+    assert.ok(
+      await js(
+        host,
+        "document.getElementById('problem-history-list').textContent.includes('Corrected')",
+      ),
+    );
+    await js(
+      host,
+      "document.getElementById('mark-solved').click(); document.getElementById('confirm-solved').click()",
+    );
+    await until(
+      peer,
+      "document.getElementById('resolution-badge').textContent.includes('Solved')",
+      'optional empty fix note',
+    );
+    report(
+      'history-and-status',
+      'PASS: legacy records retained, frozen checkpoints/diff, optional fix note, solved and reopened status',
+    );
+
+    const originalSave = dialog.showSaveDialog;
+
+    try {
+      await js(
+        host,
+        "document.getElementById('problem-history').open=true; document.getElementById('export-history').click()",
+      );
+      assert.ok(
+        await js(
+          host,
+          "document.getElementById('history-export').value.includes('Legacy root cause')",
+        ),
+      );
+      dialog.showSaveDialog = async () => ({ canceled: true });
+      await js(host, "document.getElementById('save-history-export').click()");
+      await until(
+        host,
+        "document.getElementById('problem-history-status').textContent === 'Export canceled.'",
         'export cancellation',
       );
       dialog.showSaveDialog = async () => ({
         canceled: false,
-        filePath: path.join(output, 'investigation.md'),
+        filePath: path.join(output, 'history.md'),
       });
-      await js(host, `document.getElementById('save-resolution').click()`);
+      await js(host, "document.getElementById('save-history-export').click()");
       await until(
         host,
-        `document.getElementById('resolution-status').textContent === 'Markdown saved.'`,
-        'save Markdown',
+        "document.getElementById('problem-history-status').textContent === 'Markdown saved.'",
+        'export save',
       );
-      assert.equal(
-        await readFile(path.join(output, 'investigation.md'), 'utf8'),
-        exportedPreview,
+      assert.ok(
+        (await readFile(path.join(output, 'history.md'), 'utf8')).includes(
+          'Legacy failing output',
+        ),
       );
     } finally {
       dialog.showSaveDialog = originalSave;
     }
+
+    await snapshot(host, 'simplified-problem');
     await js(
       host,
-      `document.getElementById('open-join').click();
-       document.getElementById('room-mode').value = 'resume';
-       document.getElementById('room-mode').dispatchEvent(new Event('change'));`,
+      "document.getElementById('panel-resizer').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))",
     );
-    await fill(host, 'session-search', 'NaN validation');
-    await js(
-      host,
-      `document.getElementById('session-search').dispatchEvent(new Event('input'))`,
-    );
-    assert.equal(
-      await js(host, `document.getElementById('saved-room').options.length`),
-      1,
-    );
-    await fill(host, 'session-search', 'not-a-real-session');
-    await js(
-      host,
-      `document.getElementById('session-search').dispatchEvent(new Event('input'))`,
-    );
-    assert.equal(
-      await js(host, `document.getElementById('saved-room').options.length`),
-      0,
-    );
-    await js(host, `document.getElementById('cancel-join').click()`);
-    await js(guest, `document.getElementById('open-resolution').click()`);
-    await fill(guest, 'reopen-reason', 'Follow-up verification is needed');
-    await js(guest, `document.getElementById('reopen-resolution').click()`);
-    await until(
-      host,
-      `document.getElementById('resolution-badge').textContent === 'Open'`,
-      'resolution reopened',
-    );
-    assert.equal(
+    assert.ok(
       await js(
         host,
-        `document.getElementById('resolution-current').textContent.includes('Implicit conversion') &&
-         document.querySelectorAll('#timeline-events li').length === 5`,
+        "Number(document.getElementById('panel-resizer').getAttribute('aria-valuenow')) > 0",
       ),
+    );
+    host.setSize(780, 760);
+    await snapshot(host, 'simplified-narrow');
+    assert.equal(
+      await js(host, 'document.documentElement.scrollWidth <= innerWidth'),
       true,
     );
-    await js(host, `document.getElementById('close-resolution').click()`);
-    await js(guest, `document.getElementById('close-resolution').click()`);
-    report(
-      'phase4-resolution',
-      'PASS: reviewed resolution, evidence/checkpoint links, isolated draft, safe Markdown save/cancel, local session search, reopening with history, desktop/narrow layout',
-    );
+    host.setSize(1100, 780);
     await stopServer();
-    await delay(700);
-    await type(host, 'offline ');
+    await until(
+      host,
+      "document.getElementById('connection-status').dataset.state === 'offline'",
+      'offline status',
+    );
+    await type(host, '// offline ');
     await startServer();
     await until(
-      guest,
-      `document.querySelector('.view-lines').textContent.includes('offline')`,
-      'reconnect',
+      peer,
+      "document.querySelector('#editor .view-lines').textContent.includes('offline')",
+      'offline edits converge',
     );
-    report('reconnect', 'PASS: offline edits converge');
-
-    await js(host, `document.getElementById('manage-invites').click()`);
+    await fetch(origin + '/rooms/' + room.id + '/invites/' + invitation.id, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + room.token },
+    });
     await until(
-      host,
-      `!!document.querySelector('.invite-row button')`,
-      'manage invitations',
-    );
-    await snapshot(host, 'access');
-    await js(host, `document.getElementById('close-access').click()`);
-    assert.equal(
-      await js(host, `document.getElementById('access-panel').hidden`),
-      true,
-    );
-    await js(host, `document.getElementById('manage-invites').click()`);
-    await until(
-      host,
-      `!!document.querySelector('.invite-row button')`,
-      'reopen invitations',
-    );
-    await js(host, `document.querySelector('.invite-row button').click()`);
-    await until(
-      guest,
-      `document.getElementById('connection-status').textContent.includes('revoked')`,
+      peer,
+      "document.getElementById('connection-status').textContent.includes('revoked')",
       'revocation',
     );
-    report('revocation', 'PASS: active collaborator loses access');
+    assert.equal(
+      await js(peer, "document.getElementById('review-context').disabled"),
+      true,
+    );
+    report(
+      'export-network-access',
+      'PASS: export review/save/cancel, narrow layout, resize, reconnect and access revocation',
+    );
 
-    app.emit('open-url', { preventDefault() {} }, launchInvite.url);
-    await delay(200);
-    await join(host, 'Invited');
-    assert.match(
-      await js(host, `document.getElementById('room-label').title`),
-      new RegExp(fixture.id),
-    );
-    report('warm-invitation', 'PASS: one editor in intended room');
-
-    const createMenu = Menu.getApplicationMenu()
-      .items.find((item) => item.label === 'File')
-      .submenu.items.find((item) => item.label === 'Create Room');
-    createMenu.click();
-    await delay(100);
-    await fill(host, 'server-input', origin);
-    await fill(host, 'creation-key', 'desktop-test-key');
-    await join(host, 'Owner');
-    await type(host, 'persist after restart');
-    await until(
-      host,
-      `document.querySelector('.view-lines').textContent.includes('persist')`,
-      'persistence fixture typed before restart',
-    );
-    await js(
-      host,
-      `document.getElementById('open-context').click(); document.getElementById('edit-context').click()`,
-    );
-    await fill(host, 'context-problem', 'Persistent investigation');
-    await js(
-      host,
-      `document.getElementById('add-attachments').click();
-      document.querySelector('[data-field="filename"]').value = 'persist.js';
-      document.querySelector('[data-field="content"]').value = 'const retained = true;';
-      document.getElementById('add-attemptEntries').click();
-      document.querySelector('[data-field="action"]').value = 'Restart application';
-      document.querySelector('[data-field="notes"]').value = 'Issue remains';`,
-    );
-    await js(
-      host,
-      `document.getElementById('review-context').click(); document.getElementById('share-context').click()`,
-    );
-    await timelineEntry(host, 'checkpoint', 'Persistent checkpoint');
-    await js(host, `document.getElementById('close-timeline').click()`);
-    await js(
-      host,
-      `document.getElementById('open-resolution').click(); document.getElementById('edit-resolution').click()`,
-    );
-    await fill(host, 'resolution-cause', 'Persistent root cause');
-    await fill(host, 'resolution-fix', 'Persistent fix');
-    await fill(host, 'resolution-tags', 'persistence');
-    await js(
-      host,
-      `document.getElementById('review-resolution').click();
-       document.getElementById('share-resolution').click();
-       document.getElementById('close-resolution').click();`,
-    );
     const stored = await js(
       host,
-      `JSON.parse(localStorage.getItem('bytebridge-rooms')).at(-1)`,
+      "JSON.parse(localStorage.getItem('bytebridge-rooms')).at(-1)",
     );
+
     for (const win of BrowserWindow.getAllWindows()) win.destroy();
+
     await stopServer();
     await startServer();
-    const fresh = await guestWindow('phase1-fresh');
+
+    const fresh = await guestWindow('simplified-returned');
+
     await js(
       fresh,
-      `localStorage.setItem('bytebridge-rooms', ${JSON.stringify(JSON.stringify([stored]))})`,
+      "localStorage.setItem('bytebridge-rooms', " +
+        JSON.stringify(JSON.stringify([stored])) +
+        ')',
     );
+
     const reloaded = new Promise((resolve) =>
       fresh.webContents.once('did-finish-load', resolve),
     );
+
     fresh.webContents.reload();
     await reloaded;
     await delay(200);
     await join(fresh, 'Returned');
     await until(
       fresh,
-      `document.querySelector('.view-lines').textContent.includes('persist')`,
-      'persistent content',
-    );
-    report('persistence', 'PASS: room metadata and content survive restart');
-    await until(
-      fresh,
-      `document.getElementById('debug-context').textContent.includes('Persistent investigation')`,
-      'debug context persistence',
+      "document.getElementById('problem-history-list').textContent.includes('Legacy root cause') && document.getElementById('resolution-badge').textContent.includes('Solved')",
+      'history persisted',
     );
     report(
-      'context-persistence',
-      'PASS: reviewed context survives server restart',
+      'history-persistence',
+      'PASS: problem, legacy records, checkpoints and solved status survive restart',
     );
-    await until(
-      fresh,
-      `document.getElementById('timeline-events').textContent.includes('Persistent checkpoint')`,
-      'timeline persistence',
-    );
-    assert.equal(
-      await js(
-        fresh,
-        `document.getElementById('timeline-events').textContent.includes('persist after restart')`,
-      ),
-      true,
-    );
-    report(
-      'timeline-persistence',
-      'PASS: checkpoint code and metadata survive restart',
-    );
-    assert.equal(
-      await js(
-        fresh,
-        `document.getElementById('debug-context').textContent.includes('persist.js') &&
-         document.getElementById('debug-context').textContent.includes('Restart application')`,
-      ),
-      true,
-    );
-    report('regressions', 'PASS');
-    assert.equal(
-      await js(
-        fresh,
-        `document.getElementById('resolution-badge').textContent.includes('Resolved') &&
-         document.getElementById('resolution-current').textContent.includes('Persistent root cause')`,
-      ),
-      true,
-    );
-    report(
-      'resolution-persistence',
-      'PASS: resolved state and resolution survive restart',
-    );
+
     const library = async (win) =>
       js(
         win,
@@ -1174,6 +699,7 @@ app.whenReady().then(async () => {
          document.getElementById('room-mode').dispatchEvent(new Event('change'));
          document.querySelector('#session-management details').open = true;`,
       );
+
     await library(fresh);
     await js(fresh, `document.getElementById('rename-session').click()`);
     await fill(fresh, 'session-confirm-input', 'Managed investigation');
@@ -1189,7 +715,7 @@ app.whenReady().then(async () => {
     assert.equal(
       await js(
         fresh,
-        `document.getElementById('resolution-badge').textContent.includes('Resolved')`,
+        `document.getElementById('resolution-badge').textContent.includes('Solved')`,
       ),
       true,
     );
@@ -1242,7 +768,7 @@ app.whenReady().then(async () => {
     await js(fresh, `document.getElementById('export-before-delete').click()`);
     await until(
       fresh,
-      `document.getElementById('name-modal').style.display === 'none' && !document.getElementById('resolution-panel').hidden`,
+      `document.getElementById('name-modal').style.display === 'none' && !document.getElementById('debug-context').hidden`,
       'export offered without deletion',
     );
     await library(fresh);
@@ -1266,11 +792,38 @@ app.whenReady().then(async () => {
       'room-management',
       'PASS: owner rename, archive/unarchive filters, forget cancellation, typed deletion, export-first path, active-room cleanup, closable dialog',
     );
+
     const forgetFixture = await create();
     const forgetInvite = await invite(forgetFixture);
+
     await js(fresh, `document.getElementById('open-join').click()`);
     await fill(fresh, 'invite-input', forgetInvite.url);
     await join(fresh, 'Editor');
+
+    const workspacePeer = await guestWindow('workspace-helper');
+
+    await js(
+      workspacePeer,
+      `document.getElementById('room-mode').value = 'join'; document.getElementById('room-mode').dispatchEvent(new Event('change'))`,
+    );
+    await fill(workspacePeer, 'invite-input', forgetInvite.url);
+    await join(workspacePeer, 'Helper');
+    await checkWorkspace({
+      host: fresh,
+      peer: workspacePeer,
+      output,
+      js,
+      fill,
+      until,
+      type,
+      timelineEntry,
+      snapshot,
+    });
+    workspacePeer.destroy();
+    report(
+      'multi-file-workspace',
+      'PASS: project scope consent, metadata-only catalog, lazy host reads, independent tabs, two-way collaboration/presence, loaded-file checkpoints, host-only explicit save, external-change conflict, copy fallback and host offline',
+    );
     await library(fresh);
     assert.equal(
       await js(
@@ -1288,16 +841,52 @@ app.whenReady().then(async () => {
       `JSON.parse(localStorage.getItem('bytebridge-rooms')).length === 0 && document.getElementById('saved-room').options.length === 0`,
       'editor forgets active room',
     );
+
     const survivingRoom = await fetch(`${origin}/rooms/${forgetFixture.id}`, {
       headers: { Authorization: `Bearer ${forgetFixture.token}` },
     });
+
     assert.equal(survivingRoom.status, 200);
     report(
       'room-forget',
       'PASS: editor cannot rename/delete; confirmed forget closes locally without deleting server room',
     );
+    await stopServer();
+    await startServer();
+    await js(fresh, `document.getElementById('open-join').click()`);
+    await fill(fresh, 'invite-input', forgetInvite.url);
+    await join(fresh, 'Returned workspace');
+    await until(
+      fresh,
+      `document.querySelectorAll('.workspace-file').length === 5`,
+      'multi-file persistence',
+    );
+    await js(
+      fresh,
+      `
+      if(document.getElementById('files-panel').hidden) document.getElementById('open-files').click();
+      [...document.querySelectorAll('.workspace-file')]
+        .find(row => row.dataset.path === 'src/a.js').querySelector('button').click();
+    `,
+    );
+    await until(
+      fresh,
+      `document.querySelector('#editor .view-lines').textContent.includes('later')`,
+      'named file content persisted',
+    );
+    assert.ok(
+      await js(
+        fresh,
+        `document.getElementById('problem-history-list').textContent.includes('Checkpoint')`,
+      ),
+    );
+    report(
+      'workspace-persistence',
+      'PASS: project catalog, loaded shared buffers and workspace checkpoints survive server restart',
+    );
   } catch (error) {
     report('failure', error.stack);
+
     for (const win of BrowserWindow.getAllWindows()) {
       await snapshot(win, `failure-window-${win.id}`);
       report(
@@ -1314,13 +903,9 @@ app.whenReady().then(async () => {
         ),
       );
     }
+
     process.exitCode = 1;
   } finally {
-    if (clipboardFormats) {
-      clipboard.clear();
-      for (const [format, data] of clipboardFormats)
-        clipboard.writeBuffer(format, data);
-    }
     await writeFile(
       path.join(output, 'results.json'),
       JSON.stringify(results, null, 2),

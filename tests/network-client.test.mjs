@@ -27,14 +27,17 @@ test(
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     const children = [];
+
     try {
       const port = await new Promise((resolve, reject) => {
         const timer = setTimeout(
           () => reject(new Error('Server start timeout')),
           8000,
         );
+
         server.stdout.on('data', (chunk) => {
           const match = String(chunk).match(/port (\d+)/);
+
           if (match) {
             clearTimeout(timer);
             resolve(Number(match[1]));
@@ -65,9 +68,12 @@ test(
                 ['scripts/network-client.mjs'],
                 { stdio: ['pipe', 'pipe', 'pipe'] },
               );
+
               children.push(child);
+
               let output = '',
                 errors = '';
+
               child.stdout.on('data', (chunk) => {
                 output += chunk;
               });
@@ -96,7 +102,9 @@ test(
             }),
         ),
       );
+
       assert.equal(results[0].finalText, results[1].finalText);
+
       for (const result of results) {
         assert.equal(result.result, 'PASS');
         assert.equal(result.mode, 'local-harness-validation');
@@ -105,6 +113,7 @@ test(
     } finally {
       for (const child of children)
         if (child.exitCode === null) child.kill('SIGTERM');
+
       if (server.exitCode === null)
         await new Promise((resolve) => {
           server.once('exit', resolve);
