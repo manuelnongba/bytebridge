@@ -5,6 +5,7 @@ import { writeFile } from 'node:fs/promises';
 import { invitationFrom } from './invitations.js';
 import { mkdirSync } from 'node:fs';
 import { profileFrom, profileDirectory } from './profiles.js';
+import { LocalProject } from './project-files.js';
 
 let win: BrowserWindow | null = null;
 let rendererReady = false;
@@ -12,8 +13,10 @@ let pendingInvitation: string | null = invitationFrom(process.argv);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 app.name = 'ByteBridge';
+
 const profile = profileFrom(process.argv);
 const userData = profileDirectory(app.getPath('userData'), profile);
+
 mkdirSync(userData, { recursive: true });
 app.setPath('userData', userData);
 app.setPath('sessionData', app.getPath('userData'));
@@ -26,7 +29,9 @@ function createWindow() {
     height: 800,
     webPreferences: { preload: path.join(__dirname, '../preload/preload.js') },
   });
+
   if (profile) win.on('page-title-updated', (event) => event.preventDefault());
+
   win.webContents.on('did-start-loading', () => {
     rendererReady = false;
   });
@@ -39,12 +44,17 @@ function createWindow() {
 
 function receiveInvitation(url: string) {
   const valid = invitationFrom([url]);
+
   if (!valid) return;
+
   if (win && rendererReady) win.webContents.send('deeplink', valid);
   else pendingInvitation = valid;
+
   if (app.isReady() && !win) createWindow();
+
   if (win) {
     if (win.isMinimized()) win.restore();
+
     win.show();
     win.focus();
   }
@@ -52,14 +62,20 @@ function receiveInvitation(url: string) {
 
 ipcMain.handle('renderer:ready', (event) => {
   if (event.sender !== win?.webContents) return null;
+
   rendererReady = true;
+
   const invitation = pendingInvitation;
+
   pendingInvitation = null;
+
   return invitation;
 });
 ipcMain.handle('clipboard:copy', (_event, text: string) => {
   if (typeof text !== 'string') throw new Error('Expected clipboard text');
+
   clipboard.writeText(text);
+
   return true;
 });
 
@@ -68,11 +84,13 @@ ipcMain.handle('export:markdown', async (event, content: unknown) => {
   const trustedURL = pathToFileURL(
     path.join(__dirname, '../renderer/index.html'),
   ).href;
+
   if (
     event.senderFrame !== event.sender.mainFrame ||
     event.sender.getURL() !== trustedURL
   )
     throw new Error('Export is available only from the application.');
+
   if (
     typeof content !== 'string' ||
     Buffer.byteLength(content, 'utf8') > 2 * 1024 * 1024
@@ -80,15 +98,175 @@ ipcMain.handle('export:markdown', async (event, content: unknown) => {
     throw new Error(
       'Export is too large. Redact or shorten the preview first.',
     );
+
   const result = await dialog.showSaveDialog({
     title: 'Export investigation as Markdown',
     defaultPath: 'bytebridge-investigation.md',
     filters: [{ name: 'Markdown', extensions: ['md'] }],
   });
+
   if (result.canceled || !result.filePath) return { canceled: true };
+
   await writeFile(result.filePath, content, 'utf8');
+
   return { canceled: false };
 });
+
+let importingFolder = false;
+const projects = new Map<number, Map<string, LocalProject>>();
+
+function trustedProjectSender(event: Electron.IpcMainInvokeEvent) {
+  if (
+    event.senderFrame !== event.sender.mainFrame ||
+    event.sender.getURL() !==
+      pathToFileURL(path.join(__dirname, '../renderer/index.html')).href
+  )
+    throw new Error('Projects are available only from the application.');
+
+  let owned = projects.get(event.sender.id);
+
+  if (!owned) {
+    owned = new Map();
+    projects.set(event.sender.id, owned);
+
+    const cleanup = () => {
+      for (const project of owned!.values()) project.close();
+
+      owned!.clear();
+    };
+
+    event.sender.on(
+      'did-start-navigation',
+      (_event, _url, _inPlace, mainFrame) => {
+        if (mainFrame) cleanup();
+      },
+    );
+    event.sender.once('destroyed', () => {
+      cleanup();
+      projects.delete(event.sender.id);
+    });
+  }
+
+  return owned;
+}
+
+ipcMain.handle('workspace:save-file', async (event, input: unknown) => {
+  const trustedURL = pathToFileURL(
+    path.join(__dirname, '../renderer/index.html'),
+  ).href;
+
+  if (
+    event.senderFrame !== event.sender.mainFrame ||
+    event.sender.getURL() !== trustedURL
+  )
+    throw new Error('File export is available only from the application.');
+
+  const value = input as { name?: unknown; content?: unknown } | null;
+
+  if (
+    !value ||
+    typeof value.name !== 'string' ||
+    typeof value.content !== 'string' ||
+    Buffer.byteLength(value.content, 'utf8') > 2 * 1024 * 1024
+  )
+    throw new Error('Invalid or oversized file export.');
+
+  const name =
+    value.name
+      .split(/[\\/]/)
+      .pop()
+      ?.replace(/[\x00-\x1f<>:"|?*]/g, '_')
+      .slice(0, 120) || 'shared-file.txt';
+  const result = await dialog.showSaveDialog({
+    title: 'Save a room-owned file copy',
+    defaultPath: name === '.' || name === '..' ? 'shared-file.txt' : name,
+  });
+
+  if (result.canceled || !result.filePath) return { canceled: true };
+
+  await writeFile(result.filePath, value.content, 'utf8');
+
+  return { canceled: false };
+});
+
+ipcMain.handle('project:open', async (event) => {
+  const owned = trustedProjectSender(event);
+
+  if (owned.size >= 4)
+    throw new Error('Stop hosting before opening more than four projects.');
+
+  if (importingFolder) throw new Error('A project picker is already open.');
+
+  importingFolder = true;
+
+  try {
+    const result = await dialog.showOpenDialog({
+      title: 'Choose the project or subfolder to share',
+      properties: ['openDirectory'],
+    });
+
+    if (result.canceled || !result.filePaths[0]) return null;
+
+    const { project, manifest } = await LocalProject.select(
+      result.filePaths[0],
+    );
+    const confirmation = await dialog.showMessageBox({
+      type: 'warning',
+      title: 'Share project scope?',
+      message: `Share ${manifest.files.length} file names from ${manifest.name}?`,
+      detail: `${project.root}\n\n${manifest.skippedCount} files/folders excluded using .gitignore and built-in safety rules.${manifest.truncated ? ' The scan limit was reached; only this partial file list will be shared.' : ''}\n\nRoom participants can request any listed file while you host. Contents load on demand and remain in room storage/history. Exclusions are not a secret detector: choose a narrower subfolder or use a snippet for sensitive projects. Only you can explicitly save shared edits to these originals.`,
+      buttons: ['Cancel', 'Share project'],
+      defaultId: 0,
+      cancelId: 0,
+    });
+
+    if (confirmation.response !== 1 || event.sender.isDestroyed()) {
+      project.close();
+
+      return null;
+    }
+
+    trustedProjectSender(event);
+    owned.set(project.id, project);
+
+    return manifest;
+  } finally {
+    importingFolder = false;
+  }
+});
+
+for (const operation of ['read', 'save', 'close'] as const) {
+  ipcMain.handle(
+    `project:${operation}`,
+    async (event, projectId: string, fileId: string, content: string) => {
+      const owned = trustedProjectSender(event);
+      const project = owned.get(projectId);
+
+      if (!project) throw new Error('This window does not host that project.');
+
+      if (operation === 'close') {
+        project.close();
+        owned.delete(projectId);
+
+        return;
+      }
+
+      try {
+        return operation === 'read'
+          ? await project.read(fileId)
+          : await project.save(fileId, content);
+      } catch (error) {
+        // Never forward OS errors containing local absolute paths to another participant.
+        if ((error as NodeJS.ErrnoException).code)
+          throw new Error(
+            'Project file is unavailable or could not be accessed safely.',
+          );
+
+        throw error;
+      }
+    },
+  );
+}
 
 app.on('open-url', (event, url) => {
   event.preventDefault();
@@ -96,9 +274,11 @@ app.on('open-url', (event, url) => {
 });
 app.on('second-instance', (_event, argv) => {
   const invitation = invitationFrom(argv);
+
   if (invitation) receiveInvitation(invitation);
   else if (win) {
     if (win.isMinimized()) win.restore();
+
     win.focus();
   }
 });
@@ -128,9 +308,11 @@ else {
       ]),
     );
     createWindow();
+
     if (app.isPackaged && !profile) app.setAsDefaultProtocolClient('myapp');
   });
 }
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });

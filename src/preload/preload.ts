@@ -1,7 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { NativeAPI } from '../shared/contracts.js';
 
-contextBridge.exposeInMainWorld('api', {
+const api: NativeAPI = {
   ready: () => ipcRenderer.invoke('renderer:ready'),
+  openProject: () => ipcRenderer.invoke('project:open'),
+  readProjectFile: (projectId: string, fileId: string) =>
+    ipcRenderer.invoke('project:read', projectId, fileId),
+  saveProjectFile: (projectId: string, fileId: string, content: string) =>
+    ipcRenderer.invoke('project:save', projectId, fileId, content),
+  closeProject: (projectId: string) =>
+    ipcRenderer.invoke('project:close', projectId),
+  saveWorkspaceFile: (name: string, content: string) =>
+    ipcRenderer.invoke('workspace:save-file', { name, content }),
   saveMarkdown: (content: string) =>
     ipcRenderer.invoke('export:markdown', content),
   copyToClipboard: async (text: string) =>
@@ -12,4 +22,6 @@ contextBridge.exposeInMainWorld('api', {
 
   onDeepLink: (callback: (url: string) => void) =>
     ipcRenderer.on('deeplink', (_, url) => callback(url)),
-});
+};
+
+contextBridge.exposeInMainWorld('api', api);

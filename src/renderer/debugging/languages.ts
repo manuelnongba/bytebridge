@@ -1,5 +1,7 @@
 // One registry supplies both attachment choices and detection. Add mappings here.
-export const ATTACHMENT_LANGUAGES = [
+import type { Language } from '../../shared/contracts.js';
+
+export const ATTACHMENT_LANGUAGES: Language[] = [
   { id: 'javascript', extensions: ['.js', '.mjs', '.cjs', '.jsx'] },
   { id: 'typescript', extensions: ['.ts', '.tsx', '.mts', '.cts'] },
   { id: 'python', extensions: ['.py', '.pyw', '.pyi'] },
@@ -66,8 +68,11 @@ export const ATTACHMENT_LANGUAGES = [
   { id: 'plaintext', extensions: ['.txt', '.log'] },
 ];
 
-export function detectLanguage(filename, languages = ATTACHMENT_LANGUAGES) {
-  const name = filename.split(/[\\/]/).pop().toLowerCase();
+export function detectLanguage(
+  filename: string,
+  languages = ATTACHMENT_LANGUAGES,
+) {
+  const name = (filename.split(/[\\/]/).pop() || '').toLowerCase();
   const named = languages.find(
     (language) =>
       language.filenames?.some((file) => file.toLowerCase() === name) ||
@@ -75,7 +80,9 @@ export function detectLanguage(filename, languages = ATTACHMENT_LANGUAGES) {
         name.startsWith(prefix.toLowerCase()),
       ),
   );
+
   if (named) return named.id;
+
   const matches = languages
     .flatMap((language) =>
       (language.extensions || []).map((extension) => ({
@@ -84,6 +91,7 @@ export function detectLanguage(filename, languages = ATTACHMENT_LANGUAGES) {
       })),
     )
     .sort((a, b) => b.extension.length - a.extension.length);
+
   return (
     matches.find(({ extension }) => name.endsWith(extension))?.id || 'plaintext'
   );
