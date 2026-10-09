@@ -24,10 +24,17 @@ function createConfig({ target, entry, outDir, plugins = [] }) {
     },
     resolve: {
       extensions: ['.ts', '.js'],
+      extensionAlias: { '.js': ['.ts', '.js'] },
     },
     module: {
       rules: [
-        { test: /\.ts$/, use: 'ts-loader' },
+        {
+          test: /\.ts$/,
+          use: {
+            loader: 'ts-loader',
+            options: { configFile: 'tsconfig.app.json', transpileOnly: true },
+          },
+        },
         { test: /\.css$/, use: ['style-loader', 'css-loader'] },
         {
           test: /\.ttf$/,
@@ -52,7 +59,7 @@ export default [
   createConfig({
     target: 'web',
     entry: {
-      renderer: './src/renderer/renderer.js',
+      renderer: './src/renderer/renderer.ts',
       'editor.worker': 'monaco-editor/esm/vs/editor/editor.worker.js',
       'json.worker': 'monaco-editor/esm/vs/language/json/json.worker',
       'css.worker': 'monaco-editor/esm/vs/language/css/css.worker',

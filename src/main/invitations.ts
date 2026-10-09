@@ -2,6 +2,7 @@ export function invitationFrom(values: string[]): string | null {
   for (const value of values) {
     try {
       const url = new URL(value);
+
       if (
         url.protocol === 'myapp:' &&
         url.hostname === 'join' &&
@@ -12,5 +13,6 @@ export function invitationFrom(values: string[]): string | null {
       /* Command-line arguments need not be URLs. */
     }
   }
+
   return null;
 }

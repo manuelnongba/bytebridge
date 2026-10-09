@@ -52,23 +52,27 @@ export class PresenceManager {
               monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
           },
         };
-        this.updateCursorStyle(clientId, state);
+
+        this.updateCursorStyle(clientId, state.user.color);
+
         const collection = this.editor.createDecorationsCollection([
           decoration,
         ]);
+
         this.decorations.set(clientId, collection);
       }
     });
   }
 
-  updateCursorStyle(clientId: number, state: any) {
+  updateCursorStyle(clientId: number, color: string) {
     const style = document.createElement('style');
+
     document.head.appendChild(style);
     this.styles.set(clientId, style);
 
     style.textContent = `
        .cursor-${clientId} {
-          background-color: ${/^#[0-9a-f]{6}$/i.test(state.user.color) ? state.user.color : '#007acc'};
+          background-color: ${/^#[0-9a-f]{6}$/i.test(color) ? color : '#007acc'};
           width: 2px !important;
           margin-left: -1px;
         }
@@ -93,6 +97,7 @@ export class PresenceManager {
     this.listeners.push(
       editor.onDidChangeCursorPosition(() => {
         const position = editor.getPosition();
+
         if (position) {
           awareness?.setLocalStateField('cursor', {
             line: position.lineNumber,

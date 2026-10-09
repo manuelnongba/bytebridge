@@ -1,12 +1,22 @@
 import { APP_CONFIG } from '../app-config.js';
+import type { Room } from '../../shared/contracts.js';
 
-export function serverAddress(value) {
+export class AccessError extends Error {
+  denied = false;
+}
+
+export const accessDenied = (error: unknown) =>
+  error instanceof AccessError && error.denied;
+
+export function serverAddress(value: string) {
   const url = new URL(value);
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local))
     throw new Error(
       'Use HTTPS for remote servers. HTTP is allowed only on localhost.',
     );
+
   if (
     url.username ||
     url.password ||
@@ -17,13 +27,15 @@ export function serverAddress(value) {
     throw new Error(
       'Enter the server origin only, e.g. https://rooms.example.com',
     );
+
   return url.origin;
 }
 
-export function parseInvitation(value) {
+export function parseInvitation(value: string): Room {
   const url = new URL(value.trim());
   const id = url.searchParams.get('room');
   const token = url.searchParams.get('token');
+
   if (
     url.protocol !== 'myapp:' ||
     url.hostname !== 'join' ||
@@ -33,18 +45,29 @@ export function parseInvitation(value) {
     throw new Error(
       'This invitation is invalid or uses the old public-room format. Ask the owner for a new one.',
     );
+
   return {
-    id,
-    token,
+    id: id!,
+    token: token!,
     server: serverAddress(url.searchParams.get('server') || ''),
     role: 'editor',
   };
 }
 
-export async function request(
-  server,
-  route,
-  { method = 'GET', token, data, creationKey } = {},
+export async function request<T = Omit<Room, 'server'>>(
+  server: string,
+  route: string,
+  {
+    method = 'GET',
+    token,
+    data,
+    creationKey,
+  }: {
+    method?: string;
+    token?: string;
+    data?: unknown;
+    creationKey?: string;
+  } = {},
 ) {
   const response = await fetch(`${serverAddress(server)}${route}`, {
     method,
@@ -57,21 +80,28 @@ export async function request(
     signal: AbortSignal.timeout(APP_CONFIG.requestTimeoutMs),
   });
   let result;
+
   try {
     result = await response.json();
   } catch {
-    const error = new Error(
+    const error = new AccessError(
       'The server did not return JSON. Check the server address. For local development, stop the old y-websocket server and run npm run server from the ByteBridge project.',
     );
+
     error.denied = response.status === 401 || response.status === 403;
+
     throw error;
   }
+
   if (!response.ok) {
-    const error = new Error(
+    const error = new AccessError(
       result?.error || 'The server could not complete the request.',
     );
+
     error.denied = response.status === 401 || response.status === 403;
+
     throw error;
   }
-  return result;
+
+  return result as T;
 }

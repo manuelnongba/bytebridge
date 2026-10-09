@@ -6,7 +6,7 @@
     "module": "nodenext",
     "target": "esnext",
     "types": ["node", "electron"],
-    "lib": ["esnext", "DOM"],
+    "lib": ["esnext", "DOM", "DOM.Iterable"],
 
     "sourceMap": true,
     "declaration": true,

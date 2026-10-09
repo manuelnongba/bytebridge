@@ -1,6 +1,16 @@
+import type * as Y from 'yjs';
+import type {
+  ContextSnapshot,
+  DebugConfig,
+  ContextEntry,
+  CollectionSchema,
+} from '../../shared/contracts.js';
 import { detectLanguage } from './languages.js';
 
-export function readContext(shared, config) {
+export function readContext(
+  shared: Y.Map<unknown>,
+  config: DebugConfig,
+): ContextSnapshot {
   return Object.fromEntries([
     ...config.fields.map(({ key }) => [
       key,
@@ -10,10 +20,13 @@ export function readContext(shared, config) {
       key,
       Array.isArray(shared.get(key)) ? structuredClone(shared.get(key)) : [],
     ]),
-  ]);
+  ]) as ContextSnapshot;
 }
 
-export function validateContext(snapshot, config) {
+export function validateContext(
+  snapshot: ContextSnapshot,
+  config: DebugConfig,
+): ContextSnapshot {
   for (const field of config.fields) {
     if (
       typeof snapshot[field.key] !== 'string' ||
@@ -21,13 +34,16 @@ export function validateContext(snapshot, config) {
     )
       throw new Error(`${field.label} is too long.`);
   }
+
   if (snapshot.issue) {
     let url;
+
     try {
       url = new URL(snapshot.issue);
     } catch {
       throw new Error('Enter a complete HTTP(S) issue URL or leave it empty.');
     }
+
     if (
       !['http:', 'https:'].includes(url.protocol) ||
       url.username ||
@@ -37,15 +53,19 @@ export function validateContext(snapshot, config) {
         'Issue URLs must use HTTP(S) without embedded credentials.',
       );
   }
+
   for (const collection of config.collections) {
     const entries = snapshot[collection.key];
+
     if (!Array.isArray(entries) || entries.length > collection.maxItems)
       throw new Error(
         `${collection.label}: maximum ${collection.maxItems} entries.`,
       );
+
     for (const entry of entries) {
       for (const field of collection.fields) {
         const value = entry?.[field.key];
+
         if (
           typeof value !== 'string' ||
           (!value.trim() && field.key !== 'notes') ||
@@ -58,6 +78,7 @@ export function validateContext(snapshot, config) {
       }
     }
   }
+
   if (
     new TextEncoder().encode(JSON.stringify(snapshot)).byteLength >
     config.maxContextBytes
@@ -65,24 +86,39 @@ export function validateContext(snapshot, config) {
     throw new Error(
       'Context is too large. Remove or shorten attachments and logs.',
     );
+
   return snapshot;
 }
 
 // Compare only edited fields/collections so unrelated teammate updates are retained.
-export function contextChanges(base, draft, current) {
-  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  const keys = Object.keys(draft).filter((key) => !same(base[key], draft[key]));
+export function contextChanges(
+  base: ContextSnapshot,
+  draft: ContextSnapshot,
+  current: ContextSnapshot,
+) {
+  const same = (a: unknown, b: unknown) =>
+    JSON.stringify(a) === JSON.stringify(b);
+
+  const keys = (Object.keys(draft) as (keyof ContextSnapshot)[]).filter(
+    (key) => !same(base[key], draft[key]),
+  );
+
   if (keys.some((key) => !same(base[key], current[key])))
     throw new Error(
       'A teammate changed one of these fields or lists. Copy your draft if needed, discard it, and edit the latest context.',
     );
+
   return keys;
 }
 
-export function entrySummary(entry, collection) {
+export function entrySummary(
+  entry: ContextEntry,
+  collection: CollectionSchema,
+) {
   return collection.fields
     .map((field) => {
       const value = String(entry?.[field.key] || '');
+
       return field.displayLabel === false
         ? `\n${value}`
         : `${field.label}: ${value}`;
@@ -90,7 +126,7 @@ export function entrySummary(entry, collection) {
     .join('\n');
 }
 
-export function contextSummary(snapshot, config) {
+export function contextSummary(snapshot: ContextSnapshot, config: DebugConfig) {
   return [
     ...config.fields.map(
       ({ key, label }) => `${label}\n${snapshot[key] || '(empty)'}`,
@@ -102,27 +138,34 @@ export function contextSummary(snapshot, config) {
   ].join('\n\n');
 }
 
-export async function readAttachment(file, config) {
+export async function readAttachment(file: File, config: DebugConfig) {
   if (file.size > config.maxFileBytes)
     throw new Error(
       `File exceeds the ${config.maxFileBytes}-byte limit. Select a smaller text file or paste a snippet.`,
     );
+
   const bytes = await file.arrayBuffer();
   let content;
+
   try {
     content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
     throw new Error('Select a UTF-8 text file, not a binary file.');
   }
+
   if (content.includes('\0'))
     throw new Error('Binary files are not supported.');
-  const filename = file.name.split(/[\\/]/).pop();
+
+  const filename = file.name.split(/[\\/]/).pop() || 'snippet.txt';
   const language = detectLanguage(filename, config.languages);
   const schema = config.collections.find((item) => item.fileImport);
+
   if (
     content.length >
-    schema.fields.find((field) => field.key === 'content').maxLength
+    (schema?.fields.find((field) => field.key === 'content')?.maxLength ||
+      32000)
   )
     throw new Error('File text is too long. Paste only the relevant snippet.');
+
   return { filename, language, content };
 }

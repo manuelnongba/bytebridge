@@ -11,6 +11,7 @@ export function setupLanguage(
 
     option.value = lang.id;
     option.textContent = lang.name;
+
     if (lang.id === editor.getModel()?.getLanguageId()) option.selected = true;
 
     languageSelect.appendChild(option);
@@ -24,6 +25,8 @@ export function setupLanguage(
       monaco.editor.setModelLanguage(model, target.value);
     }
   };
+
   languageSelect.addEventListener('change', onChange);
+
   return () => languageSelect.removeEventListener('change', onChange);
 }
