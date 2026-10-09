@@ -1,4 +1,24 @@
-export function resolutionState(records) {
+import type {
+  ResolutionRecord,
+  InvestigationEvent,
+  ResolutionConfig,
+  Room,
+} from '../../shared/contracts.js';
+
+type ResolutionInput = Record<string, string | string[]> & {
+  tags: string;
+  evidenceIds: string[];
+  beforeId: string;
+  afterId: string;
+  cause: string;
+  fix: string;
+  evidence: string;
+  uncertainty: string;
+};
+
+import { checkpointFiles } from '../workspace/data.js';
+
+export function resolutionState(records: ResolutionRecord[]) {
   return {
     resolved: records.at(-1)?.type === 'resolution',
     latest: records.at(-1) || null,
@@ -6,15 +26,22 @@ export function resolutionState(records) {
       records.findLast((record) => record.type === 'resolution') || null,
   };
 }
-export function createResolution(input, events, config, author) {
+
+export function createResolution(
+  input: ResolutionInput,
+  events: InvestigationEvent[],
+  config: ResolutionConfig,
+  author: string,
+): ResolutionRecord {
   for (const field of config.fields) {
     if (
       typeof input[field.key] !== 'string' ||
-      input[field.key].length > field.maxLength ||
-      (field.required && !input[field.key].trim())
+      input[field.key]!.length > field.maxLength ||
+      (field.required && !(input[field.key] as string).trim())
     )
       throw new Error(`Check ${field.label}.`);
   }
+
   const tags = [
     ...new Set(
       input.tags
@@ -23,22 +50,28 @@ export function createResolution(input, events, config, author) {
         .filter(Boolean),
     ),
   ];
+
   if (tags.length > config.maxTags)
     throw new Error(`Use at most ${config.maxTags} tags.`);
+
   for (const id of input.evidenceIds)
     if (!events.some((event) => event.id === id && event.output?.trim()))
       throw new Error('Choose existing entries containing supplied output.');
+
   if (Boolean(input.beforeId) !== Boolean(input.afterId))
     throw new Error('Choose both checkpoints, or leave both empty.');
+
   if (input.beforeId) {
     if (input.beforeId === input.afterId)
       throw new Error('Choose two different checkpoints.');
+
     for (const id of [input.beforeId, input.afterId])
       if (
         !events.some((event) => event.id === id && event.type === 'checkpoint')
       )
         throw new Error('A selected checkpoint is unavailable.');
   }
+
   return {
     id: crypto.randomUUID(),
     type: 'resolution',
@@ -54,19 +87,33 @@ export function createResolution(input, events, config, author) {
     afterId: input.afterId || null,
   };
 }
-export function validateResolutionAppend(records, record, config) {
+
+export function validateResolutionAppend(
+  records: ResolutionRecord[],
+  record: ResolutionRecord,
+  config: ResolutionConfig,
+) {
   if (
     records.length >= config.maxEntries ||
     new TextEncoder().encode(JSON.stringify([...records, record])).byteLength >
       config.maxBytes
   )
     throw new Error('Resolution history limit reached.');
+
   if (records.some((item) => item.id === record.id))
     throw new Error('Already shared.');
 }
-export function resolutionText(record, events = []) {
+
+export function resolutionText(
+  record: ResolutionRecord,
+  events: InvestigationEvent[] = [],
+) {
+  if (record.simple)
+    return `Solved (participant-reported) — ${record.author}\n\nWhat fixed it?\n${record.fix || 'No note provided.'}`;
+
   if (record.type === 'reopen')
     return `${record.author} reopened the investigation\n${record.reason}`;
+
   record = {
     ...record,
     beforeId: record.beforeId
@@ -78,22 +125,38 @@ export function resolutionText(record, events = []) {
         'Later checkpoint'
       : null,
   };
+
   return `Participant-reported resolution — ${record.author}\n\nRoot cause\n${record.cause}\n\nFix\n${record.fix}\n\nSupporting explanation\n${record.evidence || 'Not provided'}\n\nRemaining uncertainty\n${record.uncertainty || 'Not provided'}\n\nTags: ${record.tags.join(', ') || 'none'}\nEvidence entries attached: ${record.evidenceIds.length}. Attachments are supplied by participants, not independently verified.\nCheckpoint comparison: ${record.beforeId && record.afterId ? `${record.beforeId} → ${record.afterId}` : 'Not linked'}`;
 }
+
 // Fence all user-supplied text, including titles, so pasted Markdown cannot inject links/HTML.
-export function fenced(value, language = '') {
+export function fenced(value: unknown, language = '') {
   const text = String(value || 'Not provided');
   const size = Math.max(
     3,
     ...[...text.matchAll(/`+/g)].map((match) => match[0].length + 1),
   );
   const fence = '`'.repeat(size);
+
   return `${fence}${language}\n${text}\n${fence}`;
 }
-export function exportResolution({ title, context, events, records }) {
+
+export function exportResolution({
+  title,
+  context,
+  events,
+  records,
+}: {
+  title: string;
+  context: Record<string, unknown>;
+  events: InvestigationEvent[];
+  records: ResolutionRecord[];
+}) {
   const state = resolutionState(records);
   const resolution = state.resolution;
+
   if (!resolution) throw new Error('Record a resolution before exporting.');
+
   const parts = [
     '# ByteBridge investigation summary',
     fenced(title),
@@ -111,6 +174,7 @@ export function exportResolution({ title, context, events, records }) {
     fenced(resolutionText(resolution, events)),
     '## Investigation history',
   ];
+
   for (const [index, event] of events.entries()) {
     parts.push(
       `### Entry ${index + 1}`,
@@ -119,13 +183,17 @@ export function exportResolution({ title, context, events, records }) {
       ),
     );
   }
+
   parts.push('## Linked verification evidence');
+
   if (!resolution.evidenceIds.length)
     parts.push(
       'No verification output is attached. This resolution is based on participant claims only.',
     );
+
   for (const id of resolution.evidenceIds) {
     const event = events.find((item) => item.id === id);
+
     parts.push(
       fenced(
         event
@@ -134,37 +202,62 @@ export function exportResolution({ title, context, events, records }) {
       ),
     );
   }
+
   for (const [label, id] of [
     ['Before checkpoint', resolution.beforeId],
     ['After checkpoint', resolution.afterId],
   ]) {
     if (!id) continue;
+
     const event = events.find((item) => item.id === id);
+
     parts.push(
       `## ${label}`,
       fenced(
         event
-          ? `${event.title} (${event.language})\n\n${event.code}`
+          ? `${event.title}\n\n${checkpointFiles(event)
+              .map(
+                (file) =>
+                  `${file.path} (${file.language}, ${file.mode})\n\n${file.code}`,
+              )
+              .join('\n\n────────\n\n')}`
           : 'Checkpoint unavailable',
       ),
     );
   }
+
   if (resolution.beforeId && resolution.afterId) {
     const before = events.find((item) => item.id === resolution.beforeId),
       after = events.find((item) => item.id === resolution.afterId);
-    if (before && after)
+
+    if (before && after) {
       parts.push(
         '## Code comparison',
         'Full before/after line comparison (- removed, + added); not a minimal patch.',
-        fenced(
-          [
-            ...before.code.split('\n').map((line) => `-${line}`),
-            ...after.code.split('\n').map((line) => `+${line}`),
-          ].join('\n'),
-          'diff',
-        ),
+        'Checkpoints include loaded buffers only. An absent file was not captured; this does not prove it was added or deleted on disk.',
       );
+
+      const earlier = checkpointFiles(before),
+        later = checkpointFiles(after);
+
+      for (const id of new Set([...earlier, ...later].map((file) => file.id))) {
+        const a = earlier.find((file) => file.id === id),
+          b = later.find((file) => file.id === id);
+
+        parts.push(
+          fenced((b || a)!.path),
+          fenced(
+            [
+              ...(a ? a.code.split('\n').map((line) => `-${line}`) : []),
+              ...(b ? b.code.split('\n').map((line) => `+${line}`) : []),
+            ].join('\n'),
+            'diff',
+          ),
+        );
+      }
+    }
   }
+
   parts.push(
     '## Resolution / reopening history',
     ...records.map((record) =>
@@ -173,11 +266,13 @@ export function exportResolution({ title, context, events, records }) {
       ),
     ),
   );
+
   return parts.join('\n\n') + '\n';
 }
 
-export function searchSessions(rooms, query) {
+export function searchSessions(rooms: Room[], query: string) {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
   return rooms
     .map((room, index) => ({ room, index }))
     .filter(({ room }) => {
@@ -189,6 +284,7 @@ export function searchSessions(rooms, query) {
       ]
         .join(' ')
         .toLowerCase();
+
       return terms.every((term) => text.includes(term));
     });
 }

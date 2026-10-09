@@ -29,9 +29,8 @@
   max-width: none;
   flex: 1;
 }
+#inspector > #files-panel,
 #inspector > #debug-context,
-#inspector > #investigation-panel,
-#inspector > #resolution-panel,
 #inspector > #access-panel {
   height: 100%;
   max-height: none;
@@ -114,37 +113,84 @@
   color: var(--muted);
   line-height: 1.6;
 }
-#resolution-panel label {
-  display: block;
-  margin: 12px 0;
+#files-panel {
+  position: relative;
 }
-#resolution-panel textarea,
-#resolution-panel select {
-  display: block;
+#file-tabs {
+  display: flex;
+  overflow-x: auto;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+.file-tab {
+  display: flex;
+  flex: 0 0 auto;
+}
+.file-tab .button {
+  border-radius: 0;
+  padding: 8px;
+}
+.file-tab [aria-pressed='true'],
+.workspace-file [aria-pressed='true'] {
+  color: var(--accent);
+  background: #283334;
+}
+#active-file-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+#file-tree details {
+  margin-left: 12px;
+}
+#file-tree summary {
+  padding: 8px 0;
+  cursor: pointer;
+}
+.workspace-file .button {
+  text-align: left;
   width: 100%;
-  margin-top: 6px;
-  padding: 10px;
-  color: inherit;
-  background: #11191b;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font: inherit;
+  padding: 8px;
+  overflow-wrap: anywhere;
 }
-#resolution-panel pre {
+#file-tree .button {
+  justify-content: flex-start;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font-weight: 400;
+}
+#file-tree .button[aria-pressed='true'] {
+  background: #283334;
+  color: var(--accent);
+}
+#file-tree .button:hover {
+  background: #202c2d;
+}
+.file-presence {
+  display: block;
+  color: var(--accent);
+  padding: 0 8px 5px;
+}
+.workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+#files-status {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  color: var(--muted);
+  max-height: 150px;
+  overflow-y: auto;
 }
-#resolution-panel .button {
-  margin: 6px 8px 6px 0;
+.checkpoint-file-diff {
+  height: 260px;
 }
-#resolution-panel summary {
-  cursor: pointer;
-  padding: 10px 0;
-}
-#resolution-diff {
-  height: 300px;
-  margin-top: 12px;
+.checkpoint-file-picker {
+  width: 100%;
+  margin-bottom: 8px;
 }
 #session-count {
   color: var(--muted);
@@ -168,53 +214,8 @@
     flex-wrap: wrap;
   }
 }
-#investigation-panel {
-  flex: 0 1 auto;
-  max-height: 65vh;
-  overflow-y: auto;
-  padding: 18px;
-  margin-bottom: 12px;
-  background: #192123;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-#investigation-panel label {
-  display: block;
-  margin: 12px 0;
-}
-#investigation-panel textarea,
-#investigation-panel select {
-  width: 100%;
-  display: block;
-  margin-top: 6px;
-  padding: 10px;
-  color: inherit;
-  background: #11191b;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font: inherit;
-}
-#investigation-panel pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  color: var(--muted);
-}
-#investigation-panel .button {
-  margin: 6px 8px 6px 0;
-}
-#investigation-panel fieldset {
-  min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  margin: 14px 0;
-}
-#investigation-panel summary {
-  cursor: pointer;
-  padding: 10px 0;
-  overflow-wrap: anywhere;
-}
-#checkpoint-diff {
-  height: 300px;
+#checkpoint-diff:not(:empty) {
+  min-height: 300px;
   margin-top: 12px;
 }
 #debug-context {
@@ -710,4 +711,19 @@ select {
 .button.danger {
   border-color: #ef9696;
   color: #ffc0c0;
+}
+
+.problem-tools {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-top: 16px;
+}
+.problem-tools p:empty {
+  display: none;
+}
+#problem-history {
+  margin-top: 16px;
+}
+#problem-history-list > details {
+  border-bottom: 1px solid var(--border);
 }

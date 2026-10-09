@@ -24,15 +24,10 @@
         </div>
       </header>
       <div class="room-bar">
+        <button id="open-files" class="button secondary" hidden>Files</button>
         <span id="resolution-badge" class="session-badge" hidden>Open</span>
-        <button id="open-resolution" class="button secondary" hidden>
-          Resolution
-        </button>
-        <button id="open-timeline" class="button secondary" hidden>
-          Investigation
-        </button>
         <button id="open-context" class="button secondary" hidden>
-          Debugging context
+          Problem
         </button>
         <!-- <span class="eyebrow">SESSION</span> -->
         <span id="room-label">Your next idea starts here</span
@@ -52,17 +47,8 @@
       </div>
       <div id="workspace-body" data-stage="overview">
         <div id="inspector">
-          <aside id="resolution-panel" aria-label="Resolution" hidden></aside>
-          <aside
-            id="debug-context"
-            aria-label="Debugging context"
-            hidden
-          ></aside>
-          <aside
-            id="investigation-panel"
-            aria-label="Investigation timeline"
-            hidden
-          ></aside>
+          <aside id="files-panel" aria-label="Workspace files" hidden></aside>
+          <aside id="debug-context" aria-label="Problem" hidden></aside>
           <div id="access-panel" hidden>
             <button
               id="close-access"
@@ -109,7 +95,8 @@
         >
           <div class="editor-toolbar">
             <div class="document-tab">
-              <span aria-hidden="true">⌘</span> Shared code
+              <span aria-hidden="true">⌘</span>
+              <span id="active-file-label">Shared code</span>
               <span class="live-label">LIVE</span>
             </div>
             <label class="language-control"
@@ -117,6 +104,7 @@
               <select id="language-select" class="language-selector"></select
             ></label>
           </div>
+          <div id="file-tabs" aria-label="Open files" hidden></div>
           <div id="editor"></div>
         </section>
       </div>
