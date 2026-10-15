@@ -2,6 +2,23 @@ import http from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Doc } from 'yjs';
+import https from 'node:https';
+import {
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  existsSync,
+} from 'node:fs';
+import {
+  randomBytes,
+  randomUUID,
+  createHash,
+  timingSafeEqual,
+} from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { WebSocketServer, WebSocket } from 'ws';
 
 interface ProjectPersistence {
   clearDocument(id: string): Promise<void>;
@@ -25,24 +42,6 @@ interface StoredRoom {
   invites: StoredInvite[];
   deleted?: boolean;
 }
-
-import https from 'node:https';
-import {
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-  renameSync,
-  existsSync,
-} from 'node:fs';
-import {
-  randomBytes,
-  randomUUID,
-  createHash,
-  timingSafeEqual,
-} from 'node:crypto';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { WebSocketServer, WebSocket } from 'ws';
 
 class RoomSocket extends WebSocket {
   roomId = '';
