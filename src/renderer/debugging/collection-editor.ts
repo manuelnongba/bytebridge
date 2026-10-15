@@ -65,7 +65,7 @@ export function collectionEditor(
       else {
         (input as HTMLInputElement | HTMLTextAreaElement).maxLength =
           field.maxLength || 100;
-        input.required = field.key !== 'notes';
+        input.required = field.key !== 'notes' && !field.optional;
       }
 
       input.value = entry[field.key] || field.options?.[0] || '';
@@ -168,6 +168,7 @@ export function collectionEditor(
 
   return {
     root,
+    append,
     read,
     get pending() {
       return pending;

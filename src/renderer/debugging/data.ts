@@ -64,11 +64,11 @@ export function validateContext(
 
     for (const entry of entries) {
       for (const field of collection.fields) {
-        const value = entry?.[field.key];
+        const value = entry?.[field.key] ?? (field.optional ? '' : undefined);
 
         if (
           typeof value !== 'string' ||
-          (!value.trim() && field.key !== 'notes') ||
+          (!value.trim() && field.key !== 'notes' && !field.optional) ||
           value.length > (field.maxLength || 100) ||
           (field.options && !field.options.includes(value))
         )
@@ -116,6 +116,7 @@ export function entrySummary(
   collection: CollectionSchema,
 ) {
   return collection.fields
+    .filter((field) => !field.optional || entry?.[field.key])
     .map((field) => {
       const value = String(entry?.[field.key] || '');
 

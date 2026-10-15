@@ -9,6 +9,39 @@ import type {
 } from '../shared/contracts.js';
 
 export const APP_CONFIG = {
+  navigation: {
+    enabled: true,
+    quickOpen: true,
+    selectionAttachments: true,
+    conflictRecovery: true,
+    restoreWorkspace: true,
+    resultLimit: 40,
+    // Use Mod for Command on macOS and Control elsewhere. Empty disables a binding.
+    shortcuts: {
+      commands: 'Mod+Shift+p',
+      files: 'Mod+p',
+      attach: 'Mod+Shift+a',
+      save: 'Mod+s',
+    },
+    hiddenCommands: [] as string[],
+  },
+  appearance: {
+    density: 'comfortable' as 'comfortable' | 'compact',
+    fontSize: 13,
+    editorFontSize: 14,
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    colors: {
+      background: '#111617',
+      surface: '#192123',
+      input: '#11191b',
+      text: '#dce4e4',
+      muted: '#aebcbd',
+      accent: '#b5e8cb',
+      border: '#465455',
+      hover: '#283334',
+      focus: '#b5e8cb',
+    },
+  },
   defaultServer: 'http://localhost:1234',
   requestTimeoutMs: 8000,
   accessCheckIntervalMs: 15000,
@@ -97,11 +130,17 @@ export const APP_CONFIG = {
         maxItems: 8,
         fileImport: true,
         fields: [
-          { key: 'filename', label: 'Filename', maxLength: 160 },
+          { key: 'filename', label: 'Filename', maxLength: 320 },
           {
             key: 'language',
             label: 'Language',
             options: ATTACHMENT_LANGUAGES.map((language) => language.id),
+          },
+          {
+            key: 'lines',
+            label: 'Original line range (optional)',
+            maxLength: 60,
+            optional: true,
           },
           {
             key: 'content',

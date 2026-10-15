@@ -1,12 +1,13 @@
 import type * as Y from 'yjs';
 import type {
+  ContextEntry,
   ContextSnapshot,
   ContextKey,
   RoomProvider,
 } from '../../shared/contracts.js';
 import { element, errorMessage } from '../ui/dom.js';
 import { APP_CONFIG } from '../app-config.js';
-import { closePanel, togglePanel } from '../ui/panels.js';
+import { openPanel, closePanel, togglePanel } from '../ui/panels.js';
 import { collectionEditor } from './collection-editor.js';
 import {
   readContext,
@@ -28,7 +29,11 @@ export function initializeContext(
   toggle.hidden = !config.enabled;
   panel.hidden = true;
 
-  if (!config.enabled) return Object.assign(() => {}, { setReadOnly() {} });
+  if (!config.enabled)
+    return Object.assign(() => {}, {
+      setReadOnly() {},
+      addAttachment(_entry: ContextEntry) {},
+    });
 
   const shared = ydoc.getMap('debug-context');
   let readOnly = false;
@@ -284,6 +289,20 @@ export function initializeContext(
     for (const collection of collections.values()) collection.dispose();
   };
 
+  dispose.addAttachment = (entry: ContextEntry) => {
+    if (readOnly || !provider.synced)
+      throw new Error('Wait for an authorized room connection.');
+    if (form.hidden) edit.click();
+    collections.get('attachments')!.append(entry);
+    openPanel(panel.id);
+    optional.open = true;
+    status.textContent =
+      'Selection captured as a local draft. Review or redact it, then Save & share problem.';
+    collections
+      .get('attachments')!
+      .root.querySelector<HTMLTextAreaElement>('fieldset:last-of-type textarea')
+      ?.focus();
+  };
   dispose.setTitle = (value: string) => {
     heading.title = value;
   };

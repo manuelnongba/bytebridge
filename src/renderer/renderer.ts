@@ -1,3 +1,8 @@
+import {
+  openCheckpointFile,
+  openCheckpointComparison,
+} from './investigation/version-review.js';
+import { initializeSessionPicker } from './ui/session-picker.js';
 import 'monaco-editor';
 import type { Room, Dispose } from '../shared/contracts.js';
 import type { ViewElements } from './ui/view-elements.js';
@@ -12,6 +17,10 @@ import { initializePanelResize } from './ui/panel-resize.js';
 import { DEFAULT_LANGUAGE } from './editor/config/index.js';
 import { initializeEditor } from './editor/index.js';
 import { initializeWorkspace } from './workspace/panel.js';
+import { initializeNavigation, type Command } from './ui/navigation.js';
+import { initializeAppearance } from './ui/appearance.js';
+import { workspaceKey } from './workspace/preferences.js';
+import { workspaceFiles } from './workspace/data.js';
 import { snapshotWorkspace } from './workspace/data.js';
 import { joinRoom } from './collaboration/connection.js';
 import {
@@ -56,7 +65,8 @@ type Session = Room &
     accessTimer?: ReturnType<typeof setInterval>;
   };
 
-initializePanelResize(APP_CONFIG.panels);
+initializeAppearance();
+const panelResize = initializePanelResize(APP_CONFIG.panels);
 
 let active: Session | null = null;
 let busy = false;
@@ -82,6 +92,7 @@ const renderManagement = initializeRoomManagement({
     ] as const)
       $(id).disabled = value;
 
+    sessionPicker.refresh();
     if (!value) fields();
   },
   async openForExport(room) {
@@ -111,6 +122,11 @@ const renderManagement = initializeRoomManagement({
   },
 });
 
+const sessionPicker = initializeSessionPicker(
+  (query) =>
+    new Set(searchSessions(saved, query).map(({ index }) => String(index))),
+);
+
 $('server-input').value =
   localStorage.getItem('bytebridge-server') || APP_CONFIG.defaultServer;
 $('name-input').value = localStorage.getItem('username') || '';
@@ -127,21 +143,21 @@ function renderSaved() {
 
   $('saved-room').replaceChildren();
 
-  const matches = searchSessions(saved, $('session-search').value).filter(
-    ({ room }) => {
-      const filter = $('session-filter').value;
+  const matches = searchSessions(saved, '').filter(({ room }) => {
+    const filter = $('session-filter').value;
 
-      return (
-        filter === 'all' ||
-        (filter === 'archived' ? room.archived : !room.archived)
-      );
-    },
-  );
+    return (
+      filter === 'all' ||
+      (filter === 'archived' ? room.archived : !room.archived)
+    );
+  });
 
   matches.forEach(({ room, index }) => {
     const option = document.createElement('option');
 
     option.value = String(index);
+    option.dataset.title = room.title || room.id;
+    option.dataset.detail = `${room.search?.resolved ? 'Resolved' : 'Open'} · ${room.role} · ${room.server}${room.search?.tags?.length ? ' · ' + room.search.tags.join(', ') : ''}`;
     option.textContent = `${room.title || room.id} — ${room.search?.resolved ? 'Resolved' : 'Open'} — ${room.server} (${room.role})${room.search?.tags?.length ? ` · ${room.search.tags.join(', ')}` : ''}`;
     $('saved-room').append(option);
   });
@@ -149,8 +165,7 @@ function renderSaved() {
   if (matches.some(({ index }) => String(index) === selected))
     $('saved-room').value = selected;
 
-  $('session-count').textContent =
-    `${matches.length} saved session${matches.length === 1 ? '' : 's'} found. Search uses locally cached details from this profile.`;
+  sessionPicker.refresh();
   renderManagement();
 }
 
@@ -203,6 +218,7 @@ function updateSavedRoom(
 }
 
 function fields() {
+  sessionPicker.close();
   const titles: Record<string, string> = {
     create: 'Create a shared space',
     join: 'Join your teammates',
@@ -227,6 +243,7 @@ function fields() {
         input.disabled = hidden;
       });
   }
+  sessionPicker.refresh();
 }
 
 function showJoin(mode: string) {
@@ -250,6 +267,7 @@ function showJoin(mode: string) {
 }
 
 function hideJoin() {
+  sessionPicker.close();
   $('workspace').inert = false;
   $('name-modal').style.display = 'none';
 
@@ -347,6 +365,8 @@ function startEditing(room: Room, name: string) {
   };
 
   active = session;
+  if (APP_CONFIG.navigation.restoreWorkspace)
+    panelResize?.setRoom(workspaceKey(room.server, room.id));
   session.disposeHistory = initializeHistory(
     ydoc,
     provider,
@@ -367,6 +387,29 @@ function startEditing(room: Room, name: string) {
           'Local session cache is full. Shared room data is unaffected.';
       }
     },
+    {
+      open(checkpoint, file) {
+        if (!session.disposeEditor) openEditor();
+        if (!session.disposeEditor) return;
+        openCheckpointFile(session.disposeEditor, checkpoint, file, () => {
+          const live = workspaceFiles(ydoc).find((item) => item.id === file.id);
+          return live?.text
+            ? {
+                id: live.id,
+                path: live.path,
+                language: live.language,
+                mode: live.mode,
+                code: live.text.toString(),
+              }
+            : undefined;
+        });
+      },
+      compare(before, after) {
+        if (!session.disposeEditor) openEditor();
+        if (session.disposeEditor)
+          openCheckpointComparison(session.disposeEditor, before, after);
+      },
+    },
   );
 
   const openEditor = () => {
@@ -377,11 +420,18 @@ function startEditing(room: Room, name: string) {
     $('debug-context').classList.remove('overview-mode');
     $('editor-panel').style.display = 'flex';
     $('workspace-body').dataset.stage = 'editing';
-    session.disposeEditor = initializeEditor(provider, ydoc, name);
+    session.disposeEditor = initializeEditor(provider, ydoc, name, () => {
+      try {
+        attachSelection();
+      } catch (error) {
+        $('room-notice').textContent = errorMessage(error);
+      }
+    });
     session.disposeWorkspace = initializeWorkspace(
       ydoc,
       provider,
       session.disposeEditor,
+      workspaceKey(room.server, room.id),
     );
 
     if (APP_CONFIG.workspace.enabled) openPanel('files-panel');
@@ -673,9 +723,11 @@ $('access-panel').onkeydown = (event) => {
 };
 $('resume-room').onclick = () => showJoin('resume');
 // $('open-library').onclick = () => showJoin('resume');
-$('session-search').oninput = renderSaved;
 $('session-filter').onchange = renderSaved;
-$('saved-room').onchange = renderManagement;
+$('saved-room').onchange = () => {
+  sessionPicker.refresh();
+  renderManagement();
+};
 $('cancel-join').onclick = cancelJoin;
 $('close-join').onclick = cancelJoin;
 $('name-modal').addEventListener('click', (event) => {
@@ -719,4 +771,100 @@ async function initialize() {
   if (!invitationReceived) showJoin(saved.length ? 'resume' : 'create');
 }
 
+function attachSelection() {
+  if (!active || active.denied || !active.provider.synced) return;
+  const selection = active.disposeEditor?.getSelection();
+  if (!selection) {
+    $('room-notice').textContent = 'Select a code range in the editor first.';
+    return;
+  }
+  active.disposeContext.addAttachment(selection);
+}
+const roomAvailable = () => !!active?.disposeEditor && !active.denied;
+const buttonAvailable = (id: string) => {
+  const button = document.getElementById(id) as HTMLButtonElement | null;
+  return roomAvailable() && !!button && !button.hidden && !button.disabled;
+};
+const shortcuts = APP_CONFIG.navigation.shortcuts;
+const commands: Command[] = [
+  {
+    id: 'commands',
+    label: 'Show all commands',
+    group: 'Navigation',
+    shortcut: shortcuts.commands,
+    available: () => true,
+    run: () => navigation.show('commands'),
+  },
+  {
+    id: 'files',
+    label: 'Open file…',
+    group: 'Navigation',
+    shortcut: shortcuts.files,
+    available: () => roomAvailable() && APP_CONFIG.navigation.quickOpen,
+    run: () => navigation.show('files'),
+  },
+  {
+    id: 'attach',
+    label: 'Attach selection to problem…',
+    group: 'Problem',
+    shortcut: shortcuts.attach,
+    available: () =>
+      roomAvailable() &&
+      !!active?.provider.synced &&
+      APP_CONFIG.navigation.selectionAttachments &&
+      APP_CONFIG.debugging.enabled,
+    run: attachSelection,
+  },
+  ...[
+    ['problem', 'Show problem', 'Problem', 'open-context'],
+    ['file-panel', 'Show files', 'Files', 'open-files'],
+    ['share', 'Share project…', 'Files', 'open-project'],
+    ['save', 'Save to project', 'Files', 'save-project-file'],
+    ['copy', 'Save file copy…', 'Files', 'save-workspace-file'],
+    ['conflict', 'Review disk changes…', 'Files', 'review-disk-changes'],
+  ].map(([id, label, group, target]) => ({
+    id: id!,
+    label: label!,
+    group: group!,
+    shortcut: id === 'save' ? shortcuts.save : '',
+    available: () =>
+      id === 'conflict'
+        ? !!active?.disposeWorkspace?.canReviewDisk()
+        : buttonAvailable(target!),
+    run: () => document.getElementById(target!)?.click(),
+  })),
+];
+const navigation = initializeNavigation(
+  commands,
+  () =>
+    active
+      ? workspaceFiles(active.ydoc).map((file) => ({
+          id: file.id,
+          label: file.path,
+          detail: `${file.projectName || 'Room'} · ${file.text ? 'loaded' : 'loads from host when opened'}`,
+          run: () => {
+            void active?.disposeWorkspace?.open(file.id);
+          },
+        }))
+      : [],
+  (message) => {
+    $('room-notice').textContent = message;
+  },
+);
+const commandsButton = document.createElement('button');
+commandsButton.className = 'editor-command-button';
+commandsButton.id = 'open-commands';
+commandsButton.type = 'button';
+commandsButton.textContent = 'Commands';
+const commandHint = document.createElement('kbd');
+commandHint.textContent = shortcuts.commands
+  .replace('Mod', /Mac/.test(navigator.platform) ? '⌘' : 'Ctrl')
+  .replace('Shift', '⇧');
+commandHint.setAttribute('aria-hidden', 'true');
+commandsButton.append(commandHint);
+commandsButton.setAttribute('aria-label', 'Open command palette');
+commandsButton.title = `Search commands (${shortcuts.commands})`;
+commandsButton.hidden = !APP_CONFIG.navigation.enabled;
+commandsButton.onclick = () => navigation.show('commands');
+element('editor-actions').append(commandsButton);
 void initialize();

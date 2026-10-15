@@ -14,7 +14,7 @@ import {
   validateResolutionAppend,
   fenced,
 } from '../resolution/data.js';
-import { showCheckpointDiff } from '../investigation/checkpoint-diff.js';
+import { checkpointFiles } from '../workspace/data.js';
 import { button, element, errorMessage } from '../ui/dom.js';
 
 /** Keeps the existing Yjs collections and record IDs; no history migration/deletion. */
@@ -25,6 +25,10 @@ export function initializeHistory(
   name: string,
   getFiles: () => FileSnapshot[],
   updateIndex: (value: SearchIndex) => void,
+  inspect: {
+    open(checkpoint: InvestigationEvent, file: FileSnapshot): void;
+    compare(before: InvestigationEvent, after: InvestigationEvent): void;
+  },
 ) {
   if (!APP_CONFIG.debugging.enabled)
     return Object.assign(() => {}, { setReadOnly(_value: boolean) {} });
@@ -48,14 +52,6 @@ export function initializeHistory(
   let denied = false,
     alive = true,
     baseId: string | null = null;
-  let disposeDiff: (() => void) | null = null;
-
-  const clearDiff = () => {
-    disposeDiff?.();
-    disposeDiff = null;
-    diff.replaceChildren();
-  };
-
   const checkpoint = button('Save checkpoint', 'save-checkpoint', () => {
     if (denied || !provider.synced) return;
 
@@ -204,7 +200,7 @@ export function initializeHistory(
   const actions = document.createElement('div');
 
   actions.className = 'workspace-actions';
-  actions.append(checkpoint, solve, reopen);
+  actions.append(solve, reopen);
 
   const solvedNote = document.createElement('p');
 
@@ -230,13 +226,7 @@ export function initializeHistory(
   before.setAttribute('aria-label', 'Earlier checkpoint');
   after.setAttribute('aria-label', 'Later checkpoint');
 
-  const diff = document.createElement('div');
-
-  diff.id = 'checkpoint-diff';
-
   const compare = button('Compare checkpoints', 'compare-checkpoints', () => {
-    clearDiff();
-
     const all = events.toArray();
     const a = all.find((entry) => entry.id === before.value),
       b = all.find((entry) => entry.id === after.value);
@@ -247,64 +237,47 @@ export function initializeHistory(
       return;
     }
 
-    disposeDiff = showCheckpointDiff(diff, a, b);
-  });
-  const preview = document.createElement('textarea');
-
-  preview.id = 'history-export';
-  preview.rows = 10;
-  preview.hidden = true;
-  preview.setAttribute('aria-label', 'Review or redact Markdown before saving');
-
-  const save = button('Save Markdown…', 'save-history-export', async () => {
-    save.disabled = true;
-
-    try {
-      const result = await window.api.saveMarkdown(preview.value);
-
-      if (alive)
-        status.textContent = result.canceled
-          ? 'Export canceled.'
-          : 'Markdown saved.';
-    } catch (error) {
-      if (alive) status.textContent = errorMessage(error);
-    } finally {
-      if (alive) save.disabled = false;
-    }
-  });
-
-  save.hidden = true;
-
-  const exportButton = button('Export history…', 'export-history', () => {
-    preview.value = [
-      '# ByteBridge problem history',
-      'Participant-reported information; loaded buffers only.',
-      '## Problem & optional details',
-      fenced(JSON.stringify(context.toJSON(), null, 2)),
-      ...events.toArray().map((entry) => fenced(eventSummary(entry))),
-      ...records
-        .toArray()
-        .map((record) => fenced(resolutionText(record, events.toArray()))),
-    ].join('\n\n');
-    preview.hidden = save.hidden = false;
+    inspect.compare(structuredClone(a), structuredClone(b));
     status.textContent =
-      'Review or redact the export before saving. Changes here do not modify shared history.';
+      'Comparison opened in the editor. Both checkpoints are read-only.';
   });
-
-  history.append(
-    summary,
-    before,
-    after,
-    compare,
-    diff,
-    historyList,
-    exportButton,
-    preview,
-    save,
+  const exportButton = button(
+    'Export Markdown…',
+    'export-history',
+    async () => {
+      exportButton.disabled = true;
+      const content = [
+        '# ByteBridge problem history',
+        'Participant-reported information; loaded buffers only.',
+        '## Problem & optional details',
+        fenced(JSON.stringify(context.toJSON(), null, 2)),
+        ...events.toArray().map((entry) => fenced(eventSummary(entry))),
+        ...records
+          .toArray()
+          .map((record) => fenced(resolutionText(record, events.toArray()))),
+      ].join('\n\n');
+      try {
+        const result = await window.api.saveMarkdown(content);
+        if (alive)
+          status.textContent = result.canceled
+            ? 'Export canceled.'
+            : 'Markdown saved.';
+      } catch (error) {
+        if (alive) status.textContent = errorMessage(error);
+      } finally {
+        if (alive) exportButton.disabled = false;
+      }
+    },
   );
-  history.addEventListener('toggle', () => {
-    if (!history.open) clearDiff();
-  });
+  const historyActions = document.createElement('div');
+  historyActions.className = 'workspace-actions';
+  historyActions.append(checkpoint, exportButton);
+  const comparisons = document.createElement('details');
+  comparisons.className = 'checkpoint-comparison-options';
+  const comparisonLabel = document.createElement('summary');
+  comparisonLabel.textContent = 'Compare checkpoints';
+  comparisons.append(comparisonLabel, before, after, compare);
+  history.append(summary, historyActions, historyList, comparisons);
   root.append(actions, solveForm, solvedNote, status, history);
   panel.append(root);
 
@@ -376,7 +349,29 @@ export function initializeHistory(
       const text = document.createElement('pre');
 
       text.textContent = entry.text;
-      detail.append(heading, text);
+      detail.append(heading);
+      const checkpoint = all.find(
+        (item) => item.id === entry.id && item.type === 'checkpoint',
+      );
+      if (checkpoint) {
+        const note = document.createElement('p');
+        note.className = 'checkpoint-note';
+        note.textContent = [checkpoint.author, checkpoint.notes]
+          .filter(Boolean)
+          .join(' · ');
+        if (note.textContent) detail.append(note);
+        const files = document.createElement('div');
+        files.className = 'checkpoint-files';
+        for (const file of checkpointFiles(checkpoint)) {
+          const open = button(file.path, '', () =>
+            inspect.open(structuredClone(checkpoint), structuredClone(file)),
+          );
+          open.dataset.checkpointFile = file.id;
+          open.title = `Open ${file.path} from ${checkpoint.title} (read-only)`;
+          files.append(open);
+        }
+        detail.append(files);
+      } else detail.append(text);
       historyList.append(detail);
     }
 
@@ -400,7 +395,6 @@ export function initializeHistory(
   events.observe(render);
   context.observe(render);
   provider.on('sync', render);
-  panel.addEventListener('panel-closed', clearDiff);
   render();
 
   const dispose = () => {
@@ -409,8 +403,6 @@ export function initializeHistory(
     events.unobserve(render);
     context.unobserve(render);
     provider.off('sync', render);
-    panel.removeEventListener('panel-closed', clearDiff);
-    clearDiff();
     root.remove();
     badge.hidden = true;
   };

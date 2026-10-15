@@ -5,9 +5,10 @@ import type { APP_CONFIG } from '../app-config.js';
 
 export function readPanelSizes(
   storage: Pick<Storage, 'getItem'>,
+  key = PANEL_SIZE_KEY,
 ): Partial<Record<'width' | 'height', number>> {
   try {
-    const value = JSON.parse(storage.getItem(PANEL_SIZE_KEY) || 'null');
+    const value = JSON.parse(storage.getItem(key) || 'null');
 
     return Object.fromEntries(
       ['width', 'height']
@@ -37,7 +38,8 @@ export function initializePanelResize(config: typeof APP_CONFIG.panels) {
   const body = element('workspace-body');
   const inspector = element('inspector');
   const handle = element('panel-resizer');
-  let sizes;
+  let storageKey = PANEL_SIZE_KEY;
+  let sizes: Partial<Record<'width' | 'height', number>>;
 
   try {
     sizes = readPanelSizes(localStorage);
@@ -52,7 +54,7 @@ export function initializePanelResize(config: typeof APP_CONFIG.panels) {
 
   const save = () => {
     try {
-      localStorage.setItem(PANEL_SIZE_KEY, JSON.stringify(sizes));
+      localStorage.setItem(storageKey, JSON.stringify(sizes));
     } catch {
       /* Resizing still works when storage is unavailable. */
     }
@@ -198,4 +200,12 @@ export function initializePanelResize(config: typeof APP_CONFIG.panels) {
   });
   observer.observe(body, { attributes: true, attributeFilter: ['data-stage'] });
   refresh();
+  return {
+    setRoom(key: string) {
+      stopDrag(true);
+      storageKey = `${key}:panels`;
+      sizes = readPanelSizes(localStorage, storageKey);
+      refresh();
+    },
+  };
 }

@@ -25,15 +25,16 @@
       </header>
       <div class="room-bar">
         <button id="open-files" class="button secondary" hidden>Files</button>
-        <span id="resolution-badge" class="session-badge" hidden>Open</span>
+
         <button id="open-context" class="button secondary" hidden>
           Problem
         </button>
-        <!-- <span class="eyebrow">SESSION</span> -->
-        <span id="room-label">Your next idea starts here</span
-        ><button id="manage-invites" class="button secondary" hidden>
+        <button id="manage-invites" class="button secondary" hidden>
           Manage access
         </button>
+
+        <span id="room-label">Your next idea starts here</span>
+        <span id="resolution-badge" class="session-badge" hidden>Open</span>
       </div>
       <p id="room-notice" role="status"></p>
       <div id="room-overview" hidden>
@@ -99,12 +100,16 @@
               <span id="active-file-label">Shared code</span>
               <span class="live-label">LIVE</span>
             </div>
-            <label class="language-control"
-              >Language
-              <select id="language-select" class="language-selector"></select
-            ></label>
+            <div id="editor-actions" class="editor-actions">
+              <label class="language-control"
+                >Language
+                <select id="language-select" class="language-selector"></select
+              ></label>
+            </div>
           </div>
-          <div id="file-tabs" aria-label="Open files" hidden></div>
+          <div id="editor-tab-strip">
+            <div id="file-tabs" aria-label="Open files" hidden></div>
+          </div>
           <div id="editor"></div>
         </section>
       </div>
@@ -177,21 +182,54 @@
           <p id="invite-destination"></p>
         </div>
         <div id="resume-fields" hidden>
-          <label for="session-search">Search sessions on this profile</label>
-          <input
-            id="session-search"
-            type="search"
-            placeholder="Title, error text, or tag"
-          />
-          <p id="session-count" role="status"></p>
-          <label for="session-filter">Show</label>
-          <select id="session-filter">
-            <option value="active">Unarchived sessions</option>
-            <option value="archived">Archived sessions</option>
-            <option value="all">All sessions</option>
-          </select>
-          <label for="saved-room">Saved rooms on this device</label
-          ><select id="saved-room"></select>
+          <div class="session-picker-heading">
+            <label id="session-picker-title" for="session-picker-trigger"
+              >Saved session</label
+            >
+            <select id="session-filter" aria-label="Filter saved sessions">
+              <option value="active">Unarchived</option>
+              <option value="archived">Archived</option>
+              <option value="all">All sessions</option>
+            </select>
+          </div>
+          <div id="session-picker" class="session-picker">
+            <button
+              id="session-picker-trigger"
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-controls="session-options"
+              aria-labelledby="session-picker-title session-picker-label"
+            >
+              <span id="session-picker-label">Choose a saved session</span
+              ><span aria-hidden="true">⌄</span>
+            </button>
+            <div id="session-picker-popup" class="session-picker-popup" hidden>
+              <input
+                id="session-search"
+                type="search"
+                role="combobox"
+                autocomplete="off"
+                aria-label="Search saved sessions"
+                aria-autocomplete="list"
+                aria-expanded="false"
+                aria-controls="session-options"
+                placeholder="Search title, error, or tag…"
+              />
+              <div
+                id="session-options"
+                role="listbox"
+                aria-label="Saved sessions"
+              ></div>
+              <p id="session-count" role="status"></p>
+            </div>
+            <select
+              id="saved-room"
+              aria-label="Selected session"
+              hidden
+              tabindex="-1"
+            ></select>
+          </div>
           <div id="session-management"></div>
         </div>
         <p id="join-error" role="alert"></p>
