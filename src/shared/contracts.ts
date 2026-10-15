@@ -23,6 +23,15 @@ export interface NativeAPI {
     projectId: string,
     fileId: string,
   ): Promise<{ content: string }>;
+  inspectProjectFile(
+    projectId: string,
+    fileId: string,
+  ): Promise<{ content: string; token: string }>;
+  acceptProjectFile(
+    projectId: string,
+    fileId: string,
+    token: string,
+  ): Promise<{ content: string }>;
   saveProjectFile(
     projectId: string,
     fileId: string,
@@ -121,7 +130,15 @@ export type RoomProvider = WebsocketProvider;
 
 export type Dispose = (() => void) & { setReadOnly(value: boolean): void };
 
+export interface ReviewTab {
+  id: string;
+  label: string;
+  render(container: HTMLElement, close: () => void): () => void;
+}
+
 export interface WorkspaceEditor {
+  openReview(tab: ReviewTab): () => void;
+  isReviewing(): boolean;
   openFile(file: WorkspaceFile): void;
   closeFile(id: string): void;
 }
@@ -144,6 +161,7 @@ export interface Field {
   options?: string[];
   displayLabel?: boolean;
   multiline?: boolean;
+  optional?: boolean;
 }
 
 export interface CollectionSchema {

@@ -1,3 +1,4 @@
+import { initializeReviewTabs } from './review-tabs.js';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import type { WorkspaceFile, RoomProvider } from '../../shared/contracts.js';
 import type * as Y from 'yjs';
@@ -15,14 +16,28 @@ export function initializeEditor(
   provider: RoomProvider,
   ydoc: Y.Doc,
   name: string,
+  attachSelection?: () => void,
 ) {
   const supportedLanguages = monaco.languages.getLanguages().map((lang) => ({
     id: lang.id,
     name: lang.aliases?.[0] || lang.id,
   }));
 
+  element('editor').hidden = false;
   const editor = monaco.editor.create(element('editor'), EDITOR_CONFIG);
 
+  editor.updateOptions({ fontSize: APP_CONFIG.appearance.editorFontSize });
+  const selectionAction =
+    APP_CONFIG.navigation.selectionAttachments && attachSelection
+      ? editor.addAction({
+          id: 'bytebridge.attachSelection',
+          label: 'Attach selection to problem…',
+          contextMenuGroupId: '9_cutcopypaste',
+          contextMenuOrder: 10,
+          precondition: 'editorHasSelection',
+          run: attachSelection,
+        })
+      : null;
   editor.getModel()?.dispose();
 
   const models = new Map<
@@ -35,10 +50,12 @@ export function initializeEditor(
   >();
   let selected: WorkspaceFile | null = null;
   let denied = false;
+  let reviewing = false;
 
   let disposeTyping = () => {};
 
   const languageSelect = element<HTMLSelectElement>('language-select');
+  languageSelect.disabled = false;
   const remoteCursorName = element<HTMLParagraphElement>('remote-cursor-name');
 
   const disposeLanguage = setupLanguage(
@@ -57,11 +74,12 @@ export function initializeEditor(
   );
 
   const updatePresence = () => {
-    const states = provider.wsconnected
-      ? Array.from(provider.awareness.getStates()).filter(
-          ([, state]) => (state.fileId || LEGACY_FILE) === selected?.id,
-        )
-      : [];
+    const states =
+      !reviewing && provider.wsconnected
+        ? Array.from(provider.awareness.getStates()).filter(
+            ([, state]) => (state.fileId || LEGACY_FILE) === selected?.id,
+          )
+        : [];
 
     presenceManager.updateCursors(
       states,
@@ -76,10 +94,41 @@ export function initializeEditor(
 
   provider.awareness.on('change', updatePresence);
 
+  const reviews = initializeReviewTabs(
+    (value) => {
+      reviewing = value;
+      element('editor').hidden = value;
+      languageSelect.disabled = value;
+      languageSelect.closest<HTMLElement>('.language-control')!.hidden = value;
+      element('editor-panel').querySelector('.live-label')!.textContent = value
+        ? 'READ ONLY'
+        : 'LIVE';
+      if (value) {
+        disposeTyping();
+        disposeTyping = () => {};
+        provider.awareness.setLocalStateField('fileId', null);
+        provider.awareness.setLocalStateField('filePath', null);
+        provider.awareness.setLocalStateField('cursor', null);
+        provider.awareness.setLocalStateField('selection', null);
+        provider.awareness.setLocalStateField('editing', false);
+        remoteCursorName.textContent = '';
+      }
+    },
+    () => {
+      if (selected) openFile(selected);
+    },
+  );
+
   const openFile = (file: WorkspaceFile) => {
     if (!file.text) return;
 
-    if (selected?.id === file.id) {
+    const wasReviewing = reviewing;
+    reviews.showLive();
+    if (
+      selected?.id === file.id &&
+      !wasReviewing &&
+      provider.awareness.getLocalState()?.fileId === file.id
+    ) {
       editor.focus();
 
       return;
@@ -130,10 +179,12 @@ export function initializeEditor(
   openFile(workspaceFiles(ydoc)[0]!);
 
   const dispose = () => {
+    reviews.dispose();
     disposeTyping();
     provider.awareness.off('change', updatePresence);
     presenceManager.dispose();
     disposeLanguage();
+    selectionAction?.dispose();
     editor.dispose();
 
     for (const { model, binding } of models.values()) {
@@ -158,6 +209,23 @@ export function initializeEditor(
   dispose.getLegacyLanguage = () =>
     models.get(LEGACY_FILE)?.model.getLanguageId() || 'javascript';
   dispose.openFile = openFile;
+  dispose.openReview = reviews.open;
+  dispose.isReviewing = () => reviewing;
+  dispose.getSelection = () => {
+    if (reviewing) return null;
+    const range = editor.getSelection();
+    const model = editor.getModel();
+    if (!range || range.isEmpty() || !model || !selected) return null;
+    const content = model.getValueInRange(range);
+    if (content.length > 32000)
+      throw new Error('Select at most 32,000 characters.');
+    return {
+      filename: selected.path,
+      language: model.getLanguageId(),
+      lines: `${range.startLineNumber}:${range.startColumn}–${range.endLineNumber}:${range.endColumn}`,
+      content,
+    };
+  };
   dispose.getFileId = () => selected?.id;
   dispose.closeFile = (id: string) => {
     if (selected?.id === id) return;

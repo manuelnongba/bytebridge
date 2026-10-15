@@ -7,7 +7,7 @@ import {
   unlink,
 } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import ignore from 'ignore';
 
@@ -110,20 +110,26 @@ type Entry = { id: string; path: string; size: number };
 type Baseline = { hash: string; dev: number; ino: number; mtimeMs: number };
 
 export class LocalProject {
-  readonly id = randomUUID();
+  readonly id: string;
   readonly files = new Map<string, Entry>();
   private baselines = new Map<string, Baseline>();
+  private reviews = new Map<string, { token: string; baseline: Baseline }>();
   private busy = new Set<string>();
   private active = true;
 
   private constructor(
     readonly root: string,
     readonly name: string,
-  ) {}
+    private identityKey?: Uint8Array,
+  ) {
+    this.id = identityKey
+      ? createHmac('sha256', identityKey).update(root).digest('hex')
+      : randomUUID();
+  }
 
-  static async select(directory: string) {
+  static async select(directory: string, identityKey?: Uint8Array) {
     const root = await realpath(directory);
-    const project = new LocalProject(root, path.basename(root));
+    const project = new LocalProject(root, path.basename(root), identityKey);
     const skipped: Array<{ path: string; reason: string }> = [];
     let entries = 0,
       skippedCount = 0,
@@ -229,7 +235,11 @@ export class LocalProject {
           continue;
         }
 
-        const id = randomUUID();
+        const id = project.identityKey
+          ? createHmac('sha256', project.identityKey)
+              .update(project.id + '/' + name)
+              .digest('hex')
+          : randomUUID();
 
         project.files.set(id, { id, path: name, size: stat.size });
       }
@@ -373,6 +383,55 @@ export class LocalProject {
     }
   }
 
+  async inspect(id: string) {
+    if (this.busy.has(id))
+      throw new Error('File operation already in progress.');
+    this.busy.add(id);
+    try {
+      const data = await boundedRead(await this.target(id));
+      if (!this.active) throw new Error('Project was closed.');
+      const token = randomUUID();
+      this.reviews.set(id, {
+        token,
+        baseline: {
+          hash: data.hash,
+          dev: data.stat.dev,
+          ino: data.stat.ino,
+          mtimeMs: data.stat.mtimeMs,
+        },
+      });
+      return { content: data.content, token };
+    } finally {
+      this.busy.delete(id);
+    }
+  }
+
+  async accept(id: string, token: string) {
+    if (this.busy.has(id))
+      throw new Error('File operation already in progress.');
+    const review = this.reviews.get(id);
+    if (!review || review.token !== token)
+      throw new Error('Review the disk file again before resolving.');
+    this.busy.add(id);
+    try {
+      const data = await boundedRead(await this.target(id));
+      const b = review.baseline;
+      if (
+        !this.active ||
+        data.hash !== b.hash ||
+        data.stat.dev !== b.dev ||
+        data.stat.ino !== b.ino ||
+        data.stat.mtimeMs !== b.mtimeMs
+      )
+        throw new Error('Disk changed again. Review the latest version.');
+      this.baselines.set(id, b);
+      this.reviews.delete(id);
+      return { content: data.content };
+    } finally {
+      this.busy.delete(id);
+    }
+  }
+
   async save(id: string, content: string) {
     if (
       typeof content !== 'string' ||
@@ -455,5 +514,6 @@ export class LocalProject {
     this.active = false;
     this.files.clear();
     this.baselines.clear();
+    this.reviews.clear();
   }
 }

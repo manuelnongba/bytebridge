@@ -6,6 +6,10 @@ const api: NativeAPI = {
   openProject: () => ipcRenderer.invoke('project:open'),
   readProjectFile: (projectId: string, fileId: string) =>
     ipcRenderer.invoke('project:read', projectId, fileId),
+  inspectProjectFile: (projectId, fileId) =>
+    ipcRenderer.invoke('project:inspect', projectId, fileId),
+  acceptProjectFile: (projectId, fileId, token) =>
+    ipcRenderer.invoke('project:accept', projectId, fileId, token),
   saveProjectFile: (projectId: string, fileId: string, content: string) =>
     ipcRenderer.invoke('project:save', projectId, fileId, content),
   closeProject: (projectId: string) =>

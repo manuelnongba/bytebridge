@@ -19,6 +19,7 @@ export function createHosting(
 ) {
   const local = new Map<string, ProjectManifest>();
   const saved = new Map<string, string>();
+  const needsReview = new Set<string>();
   const pending = new Map<
     string,
     { nonce: string; resolve(): void; reject(error: Error): void }
@@ -52,19 +53,41 @@ export function createHosting(
     if (!entry || !alive)
       throw new Error('The host is no longer sharing this file.');
 
-    if (file(fileId)?.text) return;
+    if (file(fileId)?.text && saved.has(fileId)) return;
 
     const result = await api.readProjectFile(projectId, fileId);
 
     if (!alive || !local.has(projectId))
       throw new Error('Project hosting stopped.');
 
+    const existing = file(fileId)?.text;
+    if (existing && existing.toString() !== result.content)
+      needsReview.add(fileId);
     saved.set(fileId, result.content);
     loadProjectFile(doc, projectId, entry, result.content, config);
   };
 
   function changedFiles() {
+    const remaining = new Set(
+      workspaceFiles(doc).map((entry) => entry.projectId),
+    );
+    for (const id of local.keys())
+      if (!remaining.has(id)) {
+        local.delete(id);
+        void api.closeProject(id).catch(() => {});
+        advertise();
+      }
+    for (const id of saved.keys())
+      if (!file(id)) {
+        saved.delete(id);
+        needsReview.delete(id);
+      }
     for (const [id, request] of pending) {
+      if (!file(id)) {
+        request.reject(new Error('Project was removed from the room.'));
+        pending.delete(id);
+        continue;
+      }
       if (file(id)?.text) {
         request.resolve();
         pending.delete(id);
@@ -159,8 +182,51 @@ export function createHosting(
       if (!approved || approved.path !== entry.path)
         throw new Error('Project scope changed. Save blocked.');
 
+      if (!saved.has(entry.id)) await loadLocal(entry.projectId!, entry.id);
+      if (needsReview.has(entry.id))
+        throw new Error(
+          'Save blocked: file changed outside ByteBridge or the room has retained edits. Review disk changes before saving.',
+        );
       await api.saveProjectFile(entry.projectId!, entry.id, content);
       saved.set(entry.id, content);
+      changed();
+    },
+    async acceptDisk(
+      entry: WorkspaceFile,
+      token: string,
+      disk: string,
+      reload: boolean,
+      expected: string,
+    ) {
+      if (
+        !alive ||
+        !local.has(entry.projectId || '') ||
+        entry.text?.toString() !== expected
+      )
+        throw new Error(
+          'Room content or hosting changed. Refresh the comparison.',
+        );
+      const result = await api.acceptProjectFile(
+        entry.projectId!,
+        entry.id,
+        token,
+      );
+      if (!alive || !local.has(entry.projectId || ''))
+        throw new Error('Hosting stopped.');
+      saved.set(entry.id, result.content);
+      needsReview.delete(entry.id);
+      if (reload) {
+        if (entry.text?.toString() !== expected)
+          throw new Error(
+            'A teammate edited this file. Refresh before reloading.',
+          );
+        if (result.content !== disk)
+          throw new Error('Disk changed. Refresh before reloading.');
+        doc.transact(() => {
+          entry.text!.delete(0, entry.text!.length);
+          entry.text!.insert(0, disk);
+        });
+      }
       changed();
     },
     async add(manifest: ProjectManifest) {
@@ -234,6 +300,7 @@ export function createHosting(
 
       local.clear();
       saved.clear();
+      needsReview.clear();
       advertise();
       await Promise.all(ids.map((id) => api.closeProject(id).catch(() => {})));
       changed();
@@ -252,6 +319,7 @@ export function createHosting(
 
       local.clear();
       saved.clear();
+      needsReview.clear();
       awareness.setLocalStateField('hostedProjects', []);
       awareness.setLocalStateField('workspaceRequest', null);
       awareness.setLocalStateField('workspaceResponse', null);

@@ -75,7 +75,8 @@ export function shareProject(
   if (!manifest.files.length)
     throw new Error('No eligible files in this scope.');
 
-  if (map.size + manifest.files.length > config.maxFiles)
+  const additions = manifest.files.filter((entry) => !map.has(entry.id));
+  if (map.size + additions.length > config.maxFiles)
     throw new Error(
       `Room file limit is ${config.maxFiles}. Choose a smaller subfolder.`,
     );
@@ -87,7 +88,11 @@ export function shareProject(
       !validPath(entry.path) ||
       typeof entry.id !== 'string' ||
       ids.has(entry.id) ||
-      map.has(entry.id)
+      (map.has(entry.id) &&
+        (!(map.get(entry.id) instanceof Y.Map) ||
+          (map.get(entry.id) as Y.Map<unknown>).get('projectId') !==
+            manifest.id ||
+          (map.get(entry.id) as Y.Map<unknown>).get('path') !== entry.path))
     )
       throw new Error('Invalid or duplicate project file.');
 
@@ -95,7 +100,7 @@ export function shareProject(
   }
 
   doc.transact(() => {
-    for (const entry of manifest.files) {
+    for (const entry of additions) {
       const file = new Y.Map();
 
       file.set('path', entry.path);
@@ -172,4 +177,14 @@ export function checkpointFiles(
           code: event.code || '',
         },
       ];
+}
+
+// Removal affects the room catalog, never original disk files or checkpoint snapshots.
+export function removeProject(doc: Y.Doc, projectId: string) {
+  const map = doc.getMap('workspace-files');
+  doc.transact(() => {
+    for (const [id, value] of map)
+      if (value instanceof Y.Map && value.get('projectId') === projectId)
+        map.delete(id);
+  });
 }

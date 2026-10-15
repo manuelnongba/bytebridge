@@ -1,7 +1,8 @@
 import { app, BrowserWindow, clipboard, ipcMain, Menu, dialog } from 'electron';
 import path from 'path';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { writeFile } from 'node:fs/promises';
+import { writeFile, readFile, realpath } from 'node:fs/promises';
 import { invitationFrom } from './invitations.js';
 import { mkdirSync } from 'node:fs';
 import { profileFrom, profileDirectory } from './profiles.js';
@@ -184,10 +185,51 @@ ipcMain.handle('workspace:save-file', async (event, input: unknown) => {
 
   if (result.canceled || !result.filePath) return { canceled: true };
 
-  await writeFile(result.filePath, value.content, 'utf8');
+  const destination = path.join(
+    await realpath(path.dirname(result.filePath)),
+    path.basename(result.filePath),
+  );
+  const owned = trustedProjectSender(event);
+  for (const project of owned.values()) {
+    const relative = path.relative(project.root, destination);
+    if (
+      relative === '' ||
+      (!relative.startsWith('..' + path.sep) &&
+        relative !== '..' &&
+        !path.isAbsolute(relative))
+    )
+      throw new Error(
+        'Save recovery copies outside hosted project folders to preserve the original disk files.',
+      );
+  }
+  // Exclusive creation prevents symlink/hard-link aliases and accidental replacement.
+  try {
+    await writeFile(destination, value.content, {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST')
+      throw new Error(
+        'Choose a new filename for the recovery copy; existing files are preserved.',
+      );
+    throw error;
+  }
 
   return { canceled: false };
 });
+
+async function projectIdentityKey() {
+  const location = path.join(userData, 'project-identity-key');
+  try {
+    await writeFile(location, randomBytes(32), { flag: 'wx', mode: 0o600 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+  const key = await readFile(location);
+  if (key.length !== 32) throw new Error('Project identity key is invalid.');
+  return key;
+}
 
 ipcMain.handle('project:open', async (event) => {
   const owned = trustedProjectSender(event);
@@ -207,8 +249,12 @@ ipcMain.handle('project:open', async (event) => {
 
     if (result.canceled || !result.filePaths[0]) return null;
 
+    const root = await realpath(result.filePaths[0]);
+    if ([...owned.values()].some((project) => project.root === root))
+      throw new Error('This project is already shared from this window.');
     const { project, manifest } = await LocalProject.select(
-      result.filePaths[0],
+      root,
+      await projectIdentityKey(),
     );
     const confirmation = await dialog.showMessageBox({
       type: 'warning',
@@ -235,7 +281,13 @@ ipcMain.handle('project:open', async (event) => {
   }
 });
 
-for (const operation of ['read', 'save', 'close'] as const) {
+for (const operation of [
+  'read',
+  'save',
+  'close',
+  'inspect',
+  'accept',
+] as const) {
   ipcMain.handle(
     `project:${operation}`,
     async (event, projectId: string, fileId: string, content: string) => {
@@ -252,6 +304,9 @@ for (const operation of ['read', 'save', 'close'] as const) {
       }
 
       try {
+        if (operation === 'inspect') return await project.inspect(fileId);
+        if (operation === 'accept')
+          return await project.accept(fileId, content);
         return operation === 'read'
           ? await project.read(fileId)
           : await project.save(fileId, content);

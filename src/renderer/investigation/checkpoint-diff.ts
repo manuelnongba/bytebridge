@@ -28,10 +28,21 @@ export function showCheckpointDiff(
     );
   }
 
+  const toolbar = document.createElement('label');
+  toolbar.className = 'checkpoint-file-toolbar';
+  const heading = document.createElement('span');
+  heading.className = 'checkpoint-file-heading';
+  heading.textContent = 'File to compare';
+  const count = document.createElement('span');
+  count.className = 'checkpoint-file-count';
+  count.textContent = `${ids.length} ${ids.length === 1 ? 'file' : 'files'}`;
+  heading.append(count);
+  toolbar.append(heading, picker);
+
   const view = document.createElement('div');
 
   view.className = 'checkpoint-file-diff';
-  container.replaceChildren(picker, view);
+  container.replaceChildren(toolbar, view);
 
   let dispose = () => {};
 
@@ -57,7 +68,7 @@ export function showCheckpointDiff(
   };
 }
 
-function renderFileDiff(
+export function renderFileDiff(
   container: HTMLElement,
   before: { code: string; language: string },
   after: { code: string; language: string },

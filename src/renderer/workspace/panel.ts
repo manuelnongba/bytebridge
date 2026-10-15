@@ -3,13 +3,16 @@ import type { RoomProvider, WorkspaceEditor } from '../../shared/contracts.js';
 import { element, errorMessage } from '../ui/dom.js';
 import { APP_CONFIG } from '../app-config.js';
 import { closePanel, togglePanel } from '../ui/panels.js';
-import { LEGACY_FILE, workspaceFiles } from './data.js';
+import { LEGACY_FILE, workspaceFiles, removeProject } from './data.js';
+import { readWorkspace, saveWorkspace } from './preferences.js';
+import { showDiskConflict } from './conflict.js';
 import { createHosting } from './hosting.js';
 
 export function initializeWorkspace(
   doc: Y.Doc,
   provider: RoomProvider,
   editor: WorkspaceEditor,
+  preferenceKey: string,
 ) {
   const config = APP_CONFIG.workspace;
   const panel = element('files-panel');
@@ -17,7 +20,12 @@ export function initializeWorkspace(
   const tabs = element('file-tabs');
   const title = element('active-file-label');
 
-  if (!config.enabled) return Object.assign(() => {}, { setReadOnly() {} });
+  if (!config.enabled)
+    return Object.assign(() => {}, {
+      setReadOnly() {},
+      open: async (_id: string) => {},
+      canReviewDisk: () => false,
+    });
 
   toggle.hidden = tabs.hidden = false;
 
@@ -28,6 +36,15 @@ export function initializeWorkspace(
   let currentId = LEGACY_FILE,
     selection = 0,
     renderedState = '';
+  const remembered = APP_CONFIG.navigation.restoreWorkspace
+    ? readWorkspace(preferenceKey)
+    : { opened: [], active: '' };
+  let restored = false;
+  let closeConflict = () => {};
+  const persist = () => {
+    if (restored && APP_CONFIG.navigation.restoreWorkspace)
+      saveWorkspace(preferenceKey, opened, currentId);
+  };
   const opened = [LEGACY_FILE],
     expanded = new Set(),
     knownFolders = new Set();
@@ -101,17 +118,19 @@ export function initializeWorkspace(
     }
   });
   const stop = button('Stop hosting', 'stop-hosting', async () => {
+    closeConflict();
     await hosting.stop();
 
     if (alive)
       status.textContent =
-        'Hosting stopped. Loaded buffers and history remain shared; unopened files are unavailable. Sharing again creates a new project scope.';
+        'Hosting stopped. Loaded buffers and history remain shared; unopened files are unavailable. Sharing the same folder again reuses its room files.';
   });
   const save = button('Save to project', 'save-project-file', async () => {
     const file = workspaceFiles(doc).find((item) => item.id === currentId);
 
     if (
       denied ||
+      editor.isReviewing() ||
       saving ||
       !file?.text ||
       !hosting.local.has(file.projectId || '')
@@ -119,6 +138,7 @@ export function initializeWorkspace(
       return;
 
     const content = file.text.toString();
+    let conflictDetected = false;
 
     saving = true;
     render();
@@ -133,15 +153,25 @@ export function initializeWorkspace(
             : `Saved ${file.path}, but newer shared edits are still unsaved.`;
     } catch (error) {
       if (alive) status.textContent = errorMessage(error);
+      conflictDetected = errorMessage(error).includes(
+        'changed outside ByteBridge',
+      );
     } finally {
       saving = false;
       render();
+      if (
+        alive &&
+        conflictDetected &&
+        currentId === file.id &&
+        APP_CONFIG.navigation.conflictRecovery
+      )
+        conflict.click();
     }
   });
   const copy = button('Save copy…', 'save-workspace-file', async () => {
     const file = workspaceFiles(doc).find((item) => item.id === currentId);
 
-    if (!file?.text) return;
+    if (!file?.text || editor.isReviewing()) return;
 
     copy.disabled = true;
 
@@ -161,11 +191,40 @@ export function initializeWorkspace(
       if (alive) copy.disabled = false;
     }
   });
+  const conflict = button('Review disk changes…', 'review-disk-changes', () => {
+    const file = workspaceFiles(doc).find((item) => item.id === currentId);
+    if (
+      !file?.text ||
+      denied ||
+      saving ||
+      !hosting.local.has(file.projectId || '')
+    )
+      return;
+    closeConflict();
+    closeConflict = showDiskConflict(
+      file,
+      {
+        allowed: () =>
+          alive &&
+          !denied &&
+          !saving &&
+          hosting.local.has(file.projectId || ''),
+        inspect: () => window.api.inspectProjectFile(file.projectId!, file.id),
+        accept: (token, disk, reload, expected) =>
+          hosting.acceptDisk(file, token, disk, reload, expected),
+        report: (message) => {
+          status.textContent = message;
+        },
+      },
+      editor,
+    );
+  });
   const actions = document.createElement('div');
 
   actions.className = 'workspace-actions';
+  conflict.hidden = true;
   actions.append(pick, stop, save, copy);
-  panel.replaceChildren(close, heading, help, actions, status, tree);
+  panel.replaceChildren(close, heading, help, actions, status, tree, conflict);
 
   const hosting = createHosting(doc, provider, config, window.api, render);
 
@@ -192,6 +251,7 @@ export function initializeWorkspace(
 
       currentId = id;
       editor.openFile(file);
+      persist();
       render();
     } catch (error) {
       if (alive && token === selection)
@@ -204,6 +264,13 @@ export function initializeWorkspace(
 
     const files = workspaceFiles(doc);
     const current = files.find((file) => file.id === currentId);
+    for (let i = opened.length - 1; i >= 0; i--) {
+      const id = opened[i]!;
+      if (!files.some((file) => file.id === id) && id !== currentId) {
+        opened.splice(i, 1);
+        editor.closeFile(id);
+      }
+    }
 
     if (!current) {
       void open(LEGACY_FILE);
@@ -218,13 +285,19 @@ export function initializeWorkspace(
     pick.disabled = denied || loading || !provider.synced;
     stop.hidden = !hosting.local.size;
     save.hidden = !hosting.local.has(current.projectId || '');
-    save.disabled = denied || saving || !current.text;
+    save.disabled = denied || saving || !current.text || editor.isReviewing();
+    copy.disabled = editor.isReviewing();
+    conflict.hidden = true;
+    conflict.disabled = denied || saving || !current.text;
 
     const signature = JSON.stringify({
       currentId,
+      reviewing: editor.isReviewing(),
       dirty: !!hosting.isDirty(current),
       opened,
       denied,
+      synced: provider.synced,
+      saving,
       files: files.map(({ id, path, mode, projectId, projectName, text }) => ({
         id,
         path,
@@ -245,8 +318,9 @@ export function initializeWorkspace(
     if (signature === renderedState) return;
 
     renderedState = signature;
-    title.textContent = `${current.path} · ${current.mode === 'reference' ? 'Reference — read-only' : hosting.isDirty(current) ? 'Unsaved to project' : 'Shared buffer'}`;
-    title.title = current.path;
+    if (!editor.isReviewing())
+      title.textContent = `${current.path} · ${current.mode === 'reference' ? 'Reference — read-only' : hosting.isDirty(current) ? 'Unsaved to project' : 'Shared buffer'}`;
+    if (!editor.isReviewing()) title.title = current.path;
     tabs.replaceChildren();
 
     for (const id of opened) {
@@ -261,7 +335,10 @@ export function initializeWorkspace(
       const activate = button(file.path, null, () => open(id));
 
       activate.dataset.fileId = id;
-      activate.setAttribute('aria-pressed', String(id === currentId));
+      activate.setAttribute(
+        'aria-pressed',
+        String(id === currentId && !editor.isReviewing()),
+      );
 
       const closeTab = button('×', null, () => {
         const index = opened.indexOf(id);
@@ -274,6 +351,7 @@ export function initializeWorkspace(
         // Shared code remains the fallback tab, so never dispose its active model.
         if (currentId !== id) editor.closeFile(id);
 
+        persist();
         render();
       });
 
@@ -317,7 +395,37 @@ export function initializeWorkspace(
 
           const label = document.createElement('summary');
 
-          label.textContent = name;
+          const folderName = document.createElement('span');
+          folderName.textContent = name;
+          label.append(folderName);
+          if (key === file.projectId) {
+            label.classList.add('project-heading');
+            const remove = button('×', null, () => {});
+            remove.className = 'remove-project';
+            remove.setAttribute(
+              'aria-label',
+              `Remove ${file.projectName} from room`,
+            );
+            remove.title = 'Remove project from room';
+            remove.disabled = denied || !provider.synced || saving;
+            remove.onclick = (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (denied || !provider.synced || saving) return;
+              if (
+                !window.confirm(
+                  `Remove “${file.projectName}” from this room for everyone? Shared buffers, including unsaved edits, will be removed. Original disk files and saved checkpoints are kept. Export or save any edits you need first.`,
+                )
+              )
+                return;
+              closeConflict();
+              removeProject(doc, file.projectId!);
+              persist();
+              status.textContent =
+                'Project removed from the room. Disk files and checkpoints are unchanged.';
+            };
+            label.append(remove);
+          }
           folder.append(label);
           container.append(folder);
           folders.set(folderPath, folder);
@@ -369,12 +477,37 @@ export function initializeWorkspace(
   panel.onkeydown = (event) => {
     if (event.key === 'Escape') close.click();
   };
+  const restore = () => {
+    if (restored || !provider.synced || denied) return;
+    restored = true;
+    const files = workspaceFiles(doc);
+    const restoredIds = [...new Set(remembered.opened)].filter((id) =>
+      files.some((file) => file.id === id),
+    );
+    if (restoredIds.length) opened.splice(0, opened.length, ...restoredIds);
+    if (
+      remembered.active &&
+      files.some((file) => file.id === remembered.active && file.text)
+    )
+      void open(remembered.active);
+    else {
+      render();
+      persist();
+    }
+  };
+  element('editor-panel').addEventListener('review-change', render);
+  provider.on('sync', restore);
   provider.on('sync', render);
+  restore();
   provider.on('status', render);
   render();
 
   const dispose = () => {
+    persist();
+    element('editor-panel').removeEventListener('review-change', render);
+    closeConflict();
     alive = false;
+    provider.off('sync', restore);
     hosting.dispose();
     provider.off('sync', render);
     provider.off('status', render);
@@ -385,10 +518,25 @@ export function initializeWorkspace(
     title.textContent = 'Shared code';
   };
 
+  dispose.open = open;
+  dispose.canReviewDisk = () =>
+    APP_CONFIG.navigation.conflictRecovery &&
+    !denied &&
+    !saving &&
+    !editor.isReviewing() &&
+    !!workspaceFiles(doc).find(
+      (file) =>
+        file.id === currentId &&
+        file.text &&
+        hosting.local.has(file.projectId || ''),
+    );
   dispose.setReadOnly = (value: boolean) => {
     denied = value;
 
-    if (value) void hosting.stop();
+    if (value) {
+      closeConflict();
+      void hosting.stop();
+    }
 
     render();
   };
