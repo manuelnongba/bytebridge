@@ -198,7 +198,7 @@ async function type(win, value) {
   await until(
     win,
     `(() => {
-    const lines = document.querySelector('.view-lines');
+    const lines = document.querySelector('#editor .view-lines');
     if (!lines) return false;
     const r = lines.getBoundingClientRect();
     return r.width > 0 && r.height > 0 && !!document.elementFromPoint(r.x + 10, r.y + 10)?.closest('#editor');
@@ -209,7 +209,7 @@ async function type(win, value) {
   const point = await js(
     win,
     `(() => {
-       const r = document.querySelector('.view-lines').getBoundingClientRect();
+       const r = document.querySelector('#editor .view-lines').getBoundingClientRect();
        return { x: Math.round(r.x + 10), y: Math.round(r.y + 10) };
      })()`,
   );
@@ -520,9 +520,13 @@ app.whenReady().then(async () => {
     assert.equal(
       await js(
         host,
-        "document.querySelector('#checkpoint-diff .monaco-diff-editor') === null",
+        "document.querySelector('#checkpoint-diff .monaco-diff-editor') !== null",
       ),
       true,
+    );
+    await js(
+      host,
+      `document.querySelector('#file-tabs [data-file-id]').click()`,
     );
     await problem(host);
     await js(host, "document.getElementById('mark-solved').click()");
@@ -569,18 +573,11 @@ app.whenReady().then(async () => {
     const originalSave = dialog.showSaveDialog;
 
     try {
+      dialog.showSaveDialog = async () => ({ canceled: true });
       await js(
         host,
         "document.getElementById('problem-history').open=true; document.getElementById('export-history').click()",
       );
-      assert.ok(
-        await js(
-          host,
-          "document.getElementById('history-export').value.includes('Legacy root cause')",
-        ),
-      );
-      dialog.showSaveDialog = async () => ({ canceled: true });
-      await js(host, "document.getElementById('save-history-export').click()");
       await until(
         host,
         "document.getElementById('problem-history-status').textContent === 'Export canceled.'",
@@ -590,7 +587,7 @@ app.whenReady().then(async () => {
         canceled: false,
         filePath: path.join(output, 'history.md'),
       });
-      await js(host, "document.getElementById('save-history-export').click()");
+      await js(host, "document.getElementById('export-history').click()");
       await until(
         host,
         "document.getElementById('problem-history-status').textContent === 'Markdown saved.'",
@@ -651,7 +648,7 @@ app.whenReady().then(async () => {
     );
     report(
       'export-network-access',
-      'PASS: export review/save/cancel, narrow layout, resize, reconnect and access revocation',
+      'PASS: one-action Markdown export/cancel, narrow layout, resize, reconnect and access revocation',
     );
 
     const stored = await js(
@@ -701,7 +698,59 @@ app.whenReady().then(async () => {
       );
 
     await library(fresh);
-    await js(fresh, `document.getElementById('rename-session').click()`);
+    await js(
+      fresh,
+      `document.getElementById('session-picker-trigger').click()`,
+    );
+    await until(
+      fresh,
+      `!document.getElementById('session-picker-popup').hidden`,
+      'searchable session picker opens',
+    );
+    await snapshot(fresh, 'searchable-session-picker');
+    await fill(fresh, 'session-search', 'no-such-session-xyz');
+    await js(
+      fresh,
+      `document.getElementById('session-search').dispatchEvent(new Event('input'))`,
+    );
+    assert.equal(
+      await js(
+        fresh,
+        `document.querySelectorAll('#session-options [role=option]').length`,
+      ),
+      0,
+    );
+    assert.equal(
+      await js(fresh, `document.getElementById('saved-room').options.length`),
+      1,
+    );
+    await js(
+      fresh,
+      `document.getElementById('session-search').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`,
+    );
+    assert.equal(
+      await js(fresh, `document.getElementById('name-modal').style.display`),
+      'flex',
+    );
+    await js(
+      fresh,
+      `document.getElementById('session-picker-trigger').click(); document.getElementById('session-search').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`,
+    );
+    assert.equal(
+      await js(fresh, `document.getElementById('session-picker-popup').hidden`),
+      true,
+    );
+    assert.equal(
+      await js(
+        fresh,
+        `document.getElementById('open-commands').parentElement.id`,
+      ),
+      'editor-actions',
+    );
+    await js(
+      fresh,
+      `document.querySelector('#session-management details').open = true; document.getElementById('rename-session').click()`,
+    );
     await fill(fresh, 'session-confirm-input', 'Managed investigation');
     await js(
       fresh,
@@ -861,6 +910,11 @@ app.whenReady().then(async () => {
       `document.querySelectorAll('.workspace-file').length === 5`,
       'multi-file persistence',
     );
+    await until(
+      fresh,
+      `document.getElementById('active-file-label').textContent.startsWith('src/a.js')`,
+      'personal active tab restored',
+    );
     await js(
       fresh,
       `
@@ -871,7 +925,7 @@ app.whenReady().then(async () => {
     );
     await until(
       fresh,
-      `document.querySelector('#editor .view-lines').textContent.includes('later')`,
+      `document.querySelector('#editor .view-lines').textContent.replaceAll('\u00a0', ' ').includes('external editor change')`,
       'named file content persisted',
     );
     assert.ok(

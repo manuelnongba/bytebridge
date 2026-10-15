@@ -112,6 +112,16 @@ test('ephemeral requests load only approved files; only local host can save; sto
       /Host offline/,
     );
     assert.ok(entry().text.toString().includes('shared edit'));
+    await host.add(scope);
+    assert.equal(workspaceFiles(a).length, 3);
+    await assert.rejects(
+      host.save(
+        workspaceFiles(a).find((file) => file.id === 'a'),
+        'overwrite',
+      ),
+      /Review disk changes/,
+    );
+    assert.equal(saves, 1);
   } finally {
     peer.dispose();
     host.dispose();

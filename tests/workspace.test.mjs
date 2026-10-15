@@ -7,6 +7,7 @@ import {
   workspaceFiles,
   validPath,
   shareProject,
+  removeProject,
   loadProjectFile,
   snapshotWorkspace,
   checkpointFiles,
@@ -172,5 +173,32 @@ test('checkpoints freeze loaded buffers only and export named files with legacy 
   for (const value of ['src/a.js', '-before', '+after'])
     assert.ok(markdown.includes(value));
 
+  doc.destroy();
+});
+
+test('resharing reuses buffers and removing one project preserves others and checkpoint snapshots', () => {
+  const doc = new Y.Doc();
+  const first = manifest(),
+    second = manifest();
+  shareProject(doc, first, config);
+  loadProjectFile(doc, first.id, first.files[0], 'unsaved room text', config);
+  const snapshot = snapshotWorkspace(doc);
+  shareProject(doc, first, config);
+  assert.equal(workspaceFiles(doc).length, 3);
+  assert.equal(
+    workspaceFiles(doc)
+      .find((file) => file.id === first.files[0].id)
+      .text.toString(),
+    'unsaved room text',
+  );
+  assert.throws(
+    () => shareProject(doc, { ...first, id: 'different-project' }, config),
+    /duplicate/,
+  );
+  shareProject(doc, second, config);
+  removeProject(doc, first.id);
+  assert.equal(workspaceFiles(doc).length, 3);
+  assert.ok(workspaceFiles(doc).some((file) => file.projectId === second.id));
+  assert.ok(snapshot.some((file) => file.code === 'unsaved room text'));
   doc.destroy();
 });

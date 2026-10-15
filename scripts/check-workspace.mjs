@@ -102,6 +102,47 @@ export async function checkWorkspace({
       ),
       false,
     );
+    await js(host, `document.getElementById('open-project').click()`);
+    await until(
+      host,
+      `document.getElementById('files-status').textContent.includes('already shared')`,
+      'duplicate folder rejected',
+    );
+    assert.equal(
+      await js(peer, `document.querySelectorAll('.workspace-file').length`),
+      5,
+    );
+    // Quick-open filters the catalog without eagerly requesting file contents.
+    await js(
+      host,
+      `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', metaKey: navigator.platform.includes('Mac'), ctrlKey: !navigator.platform.includes('Mac'), bubbles: true }));`,
+    );
+    await until(
+      host,
+      `document.querySelector('.navigation-dialog').open`,
+      'quick open shown',
+    );
+    await js(
+      host,
+      `const input = document.querySelector('.navigation-dialog input'); input.value = 'srca'; input.dispatchEvent(new Event('input'));`,
+    );
+    assert.equal(
+      await js(host, `document.querySelectorAll('.navigation-result').length`),
+      1,
+    );
+    assert.equal(
+      await js(
+        host,
+        `document.querySelectorAll('.workspace-file[data-loaded="false"]').length`,
+      ),
+      4,
+    );
+    await js(host, `document.querySelector('.navigation-result').click()`);
+    await until(
+      host,
+      `document.getElementById('active-file-label').textContent.startsWith('src/a.js')`,
+      'quick open loads selected file',
+    );
     await openFile(host, 'src/a.js');
     await openFile(peer, 'src/b.js');
     await until(
@@ -175,6 +216,62 @@ export async function checkWorkspace({
       'later edits sync',
     );
     await timelineEntry(host, 'checkpoint', 'Workspace after change');
+    await js(
+      host,
+      `[...document.querySelectorAll('.checkpoint-files button')].find(button => button.textContent === 'src/a.js').click()`,
+    );
+    await until(
+      host,
+      `document.querySelector('.checkpoint-snapshot .view-lines')?.textContent.includes('helper')`,
+      'checkpoint file opens in editor',
+    );
+    assert.equal(
+      await js(host, `document.getElementById('editor').hidden`),
+      true,
+    );
+    assert.equal(
+      await js(
+        host,
+        `document.querySelector('.checkpoint-snapshot .view-lines').textContent.includes('later')`,
+      ),
+      false,
+    );
+    assert.equal(
+      await js(host, `document.getElementById('save-project-file').disabled`),
+      true,
+    );
+    await host.webContents.insertText('MUST_NOT_EDIT');
+    assert.equal(
+      await js(
+        host,
+        `document.querySelector('.checkpoint-snapshot .view-lines').textContent.includes('MUST_NOT_EDIT')`,
+      ),
+      false,
+    );
+    assert.equal(
+      await js(
+        host,
+        `document.querySelector('#problem-history-list .checkpoint-files').parentElement.querySelector('pre') === null`,
+      ),
+      true,
+    );
+    await snapshot(host, 'checkpoint-file-editor');
+    await js(
+      host,
+      `document.getElementById('compare-checkpoint-current').click()`,
+    );
+    await until(
+      host,
+      `document.querySelector('#version-view .monaco-diff-editor') !== null`,
+      'checkpoint compared with room',
+    );
+    assert.equal(
+      await js(
+        peer,
+        `document.querySelector('#editor .view-lines').textContent.includes('later')`,
+      ),
+      true,
+    );
     await js(host, `document.getElementById('compare-checkpoints').click()`);
     await until(
       host,
@@ -186,7 +283,7 @@ export async function checkWorkspace({
       `const select = document.querySelector('#checkpoint-diff .checkpoint-file-picker'); select.value = [...select.options].find(option => option.textContent.startsWith('src/a.js')).value; select.dispatchEvent(new Event('change'));`,
     );
     await snapshot(host, 'workspace-checkpoint-diff');
-    await showFiles(host);
+    await openFile(host, 'src/a.js');
     await writeFile(path.join(directory, 'src/a.js'), 'external editor change');
     await js(host, `document.getElementById('save-project-file').click()`);
     await until(
@@ -198,6 +295,16 @@ export async function checkWorkspace({
       await readFile(path.join(directory, 'src/a.js'), 'utf8'),
       'external editor change',
     );
+    await until(
+      host,
+      `document.querySelector('.disk-review .monaco-diff-editor') !== null`,
+      'blocked save opens disk review in editor',
+    );
+    assert.equal(
+      await js(host, `document.getElementById('review-disk-changes').hidden`),
+      true,
+    );
+    await openFile(host, 'src/a.js');
     dialog.showSaveDialog = async () => ({ canceled: true });
     await js(host, `document.getElementById('save-workspace-file').click()`);
     await until(
@@ -220,6 +327,97 @@ export async function checkWorkspace({
         'later',
       ),
     );
+    await js(host, `document.getElementById('review-disk-changes').click()`);
+    await until(
+      host,
+      `document.querySelector('.disk-review .monaco-diff-editor') && ![...document.querySelectorAll('.disk-review button')].find(b => b.textContent.startsWith('Export &')).disabled`,
+      'disk comparison ready',
+    );
+    await snapshot(host, 'phase7-disk-comparison');
+    dialog.showSaveDialog = async () => ({ canceled: true });
+    await js(
+      host,
+      `[...document.querySelectorAll('.disk-review button')].find(b => b.textContent.startsWith('Export &')).click()`,
+    );
+    await until(
+      host,
+      `document.querySelector('.disk-review').textContent.includes('Reload canceled')`,
+      'canceled recovery keeps room',
+    );
+    assert.equal(
+      await readFile(path.join(directory, 'src/a.js'), 'utf8'),
+      'external editor change',
+    );
+    dialog.showSaveDialog = async () => ({
+      canceled: false,
+      filePath: path.join(output, 'phase7-recovery.js'),
+    });
+    await js(
+      host,
+      `[...document.querySelectorAll('.disk-review button')].find(b => b.textContent.startsWith('Export &')).click()`,
+    );
+    await until(
+      host,
+      `!document.querySelector('.disk-review')`,
+      'recovery reload completed',
+    );
+    await until(
+      peer,
+      `document.querySelector('#editor .view-lines').textContent.includes('external')`,
+      'reload propagated to peer',
+    );
+    assert.ok(
+      (
+        await readFile(path.join(output, 'phase7-recovery.js'), 'utf8')
+      ).includes('later'),
+    );
+    // Capture editor selection into a private, editable draft.
+    await type(host, '');
+    host.webContents.sendInputEvent({
+      type: 'keyDown',
+      keyCode: 'A',
+      modifiers: [process.platform === 'darwin' ? 'meta' : 'control'],
+    });
+    host.webContents.sendInputEvent({
+      type: 'keyUp',
+      keyCode: 'A',
+      modifiers: [process.platform === 'darwin' ? 'meta' : 'control'],
+    });
+    await until(
+      host,
+      `document.querySelector('#editor .selected-text') !== null`,
+      'native editor selection',
+    );
+    await js(
+      host,
+      `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', shiftKey: true, metaKey: navigator.platform.includes('Mac'), ctrlKey: !navigator.platform.includes('Mac'), bubbles: true }));`,
+    );
+    await until(
+      host,
+      `document.getElementById('context-status').textContent.includes('Selection captured')`,
+      'selection draft captured',
+    );
+    assert.equal(
+      await js(
+        host,
+        `document.querySelector('[data-collection=attachments] [data-field=filename]').value`,
+      ),
+      'src/a.js',
+    );
+    assert.ok(
+      await js(
+        host,
+        `document.querySelector('[data-collection=attachments] [data-field=lines]').value.length > 0`,
+      ),
+    );
+    assert.ok(
+      await js(
+        host,
+        `document.querySelector('[data-collection=attachments] [data-field=content]').value.includes('external editor change')`,
+      ),
+    );
+    await js(host, `document.getElementById('discard-context').click()`);
+    await showFiles(host);
     await snapshot(host, 'workspace-files-desktop');
     host.setSize(780, 760);
     await snapshot(host, 'workspace-files-narrow');
@@ -244,7 +442,65 @@ export async function checkWorkspace({
       'unloaded unavailable',
     );
     await openFile(peer, 'src/b.js');
-    await openFile(host, 'Shared code');
+    // Reattaching the same folder reuses its existing room buffers.
+    await js(host, `document.getElementById('open-project').click()`);
+    await until(
+      host,
+      `!document.getElementById('stop-hosting').hidden`,
+      'folder reattached',
+    );
+    assert.equal(
+      await js(host, `document.querySelectorAll('.workspace-file').length`),
+      5,
+    );
+    const removable = path.join(output, 'removable-project');
+    await mkdir(removable);
+    await writeFile(path.join(removable, 'extra.js'), 'keep this disk file');
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [removable],
+    });
+    await js(host, `document.getElementById('open-project').click()`);
+    await until(
+      peer,
+      `document.querySelectorAll('.workspace-file').length === 6`,
+      'second project shared',
+    );
+    await js(
+      host,
+      `(() => { const originalPrompt = window.confirm; window.confirm = () => false; document.querySelector('[aria-label="Remove removable-project from room"]').click(); window.confirm = originalPrompt; return true; })()`,
+    );
+    assert.equal(
+      await js(host, `document.querySelectorAll('.workspace-file').length`),
+      6,
+    );
+    await js(
+      host,
+      `(() => { const originalPrompt = window.confirm; window.confirm = () => true; document.querySelector('[aria-label="Remove removable-project from room"]').click(); window.confirm = originalPrompt; return true; })()`,
+    );
+    await until(
+      peer,
+      `document.querySelectorAll('.workspace-file').length === 5`,
+      'project removal sync',
+    );
+    assert.equal(
+      await readFile(path.join(removable, 'extra.js'), 'utf8'),
+      'keep this disk file',
+    );
+    assert.ok(
+      await js(
+        host,
+        `document.querySelectorAll('.checkpoint-files button').length > 0`,
+      ),
+    );
+    await openFile(host, 'src/a.js');
+    assert.equal(
+      await js(
+        host,
+        `getComputedStyle(document.querySelector('#file-tabs [aria-pressed="true"]')).backgroundColor === getComputedStyle(document.getElementById('editor-panel')).backgroundColor`,
+      ),
+      true,
+    );
     await openFile(peer, 'Shared code');
   } finally {
     dialog.showOpenDialog = originalOpen;

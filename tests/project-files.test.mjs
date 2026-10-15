@@ -138,3 +138,52 @@ test('changed ignore rules and symlink substitutions cannot bypass approved scop
   );
   project.close();
 });
+
+test('disk review does not authorize saves until explicit acceptance, and stale reviews are rejected', async () => {
+  const root = await fixture({ 'main.js': 'original' });
+  const { project, manifest } = await LocalProject.select(root);
+  const id = manifest.files[0].id;
+  const disk = path.join(root, 'main.js');
+  await project.read(id);
+  await writeFile(disk, 'external');
+  const review = await project.inspect(id);
+  assert.equal(review.content, 'external');
+  await assert.rejects(project.save(id, 'room'), /changed outside/);
+  await assert.rejects(project.accept(id, 'wrong-token'), /Review/);
+  await writeFile(disk, 'external again');
+  await assert.rejects(project.accept(id, review.token), /changed again/);
+  assert.equal(await readFile(disk, 'utf8'), 'external again');
+  const latest = await project.inspect(id);
+  await project.accept(id, latest.token);
+  assert.equal(await readFile(disk, 'utf8'), 'external again');
+  await assert.rejects(project.accept(id, latest.token), /Review/);
+  await project.save(id, 'merged room');
+  assert.equal(await readFile(disk, 'utf8'), 'merged room');
+  project.close();
+});
+
+test('review acceptance rechecks exclusions and closed hosting capabilities', async () => {
+  const root = await fixture({ 'main.js': 'original' });
+  const { project, manifest } = await LocalProject.select(root);
+  const id = manifest.files[0].id;
+  const review = await project.inspect(id);
+  await writeFile(path.join(root, '.gitignore'), 'main.js');
+  await assert.rejects(project.accept(id, review.token), /ignored/);
+  project.close();
+  await assert.rejects(project.inspect(id), /scope/);
+});
+
+test('project identity is stable for the same canonical folder and private to its profile', async () => {
+  const root = await fixture({ 'src/a.js': 'original' });
+  const key = Buffer.alloc(32, 7);
+  const first = await LocalProject.select(root, key);
+  const again = await LocalProject.select(path.join(root, '.'), key);
+  assert.equal(first.manifest.id, again.manifest.id);
+  assert.equal(first.manifest.files[0].id, again.manifest.files[0].id);
+  const otherProfile = await LocalProject.select(root, Buffer.alloc(32, 8));
+  assert.notEqual(first.manifest.id, otherProfile.manifest.id);
+  const otherRoot = await fixture({ 'src/a.js': 'original' });
+  const other = await LocalProject.select(otherRoot, key);
+  assert.notEqual(first.manifest.id, other.manifest.id);
+  for (const item of [first, again, otherProfile, other]) item.project.close();
+});
