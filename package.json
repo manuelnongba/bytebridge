@@ -37,7 +37,7 @@
     "test": "npm run build:types && npm run build:main && node --test tests/*.test.mjs",
     "test:profiles": "npm run build && node scripts/check-profiles.mjs",
     "test:desktop": "npm run build && electron scripts/check-desktop.mjs && electron scripts/check-desktop.mjs --cold-invite",
-    "server": "npm run build:server && node scripts/server.mjs",
+    "server": "npm run build:server && node --env-file=.env scripts/server.mjs",
     "dist": "npm run build && electron-builder"
   },
   "keywords": [],

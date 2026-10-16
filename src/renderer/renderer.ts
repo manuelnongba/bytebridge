@@ -1,3 +1,4 @@
+import { initializeAI } from './ai/panel.js';
 import {
   openCheckpointFile,
   openCheckpointComparison,
@@ -62,6 +63,7 @@ type Session = Room &
     disposeWorkspace?: ReturnType<typeof initializeWorkspace>;
     disposeContext: ReturnType<typeof initializeContext>;
     disposeHistory?: Dispose;
+    disposeAI?: ReturnType<typeof initializeAI>;
     accessTimer?: ReturnType<typeof setInterval>;
   };
 
@@ -297,6 +299,7 @@ function leaveRoom() {
 
   active = null;
   clearInterval(old.accessTimer);
+  old.disposeAI?.();
   old.disposeWorkspace?.();
   old.disposeEditor?.();
   old.disposeContext();
@@ -437,6 +440,18 @@ function startEditing(room: Room, name: string) {
     if (APP_CONFIG.workspace.enabled) openPanel('files-panel');
   };
 
+  session.disposeAI = initializeAI(
+    ydoc,
+    provider,
+    room,
+    $('debug-context'),
+    () => {
+      if (!session.disposeEditor) openEditor();
+
+      return session.disposeEditor;
+    },
+  );
+
   $('enter-editor').onclick = openEditor;
 
   const showOverview =
@@ -491,6 +506,7 @@ function startEditing(room: Room, name: string) {
         session.disposeWorkspace?.setReadOnly(true);
         session.disposeContext.setReadOnly(true);
         session.disposeHistory?.setReadOnly(true);
+        session.disposeAI?.setReadOnly(true);
         updateStatus();
       }
     } finally {
@@ -787,6 +803,13 @@ const buttonAvailable = (id: string) => {
 };
 const shortcuts = APP_CONFIG.navigation.shortcuts;
 const commands: Command[] = [
+  {
+    id: 'ai-catch-up',
+    label: 'Catch me up (OpenRouter)',
+    group: 'Problem',
+    available: () => !!active && !active.denied && active.provider.synced,
+    run: () => active?.disposeAI?.show(),
+  },
   {
     id: 'commands',
     label: 'Show all commands',

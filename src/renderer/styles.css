@@ -1222,3 +1222,77 @@ dialog::backdrop {
 .checkpoint-comparison-options {
   margin-top: var(--space-md);
 }
+
+.ai-dialog {
+  width: min(760px, calc(100vw - 48px));
+  max-height: 85vh;
+  overflow: auto;
+  padding: 24px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.ai-dialog::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+.ai-dialog p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ai-sources {
+  margin-top: 20px;
+}
+.ai-sources summary {
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.ai-references {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ai-references button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.ai-result h3 {
+  margin-top: 24px;
+}
+.ai-launch {
+  margin: 12px 0;
+}
+.ai-dialog [hidden] {
+  display: none;
+}
+
+.ai-summary-section ul,
+.ai-summary-section ol {
+  padding-left: 22px;
+  margin: 8px 0 18px;
+}
+.ai-summary-section li {
+  margin-bottom: 12px;
+}
+.ai-summary-section li p {
+  margin: 0 0 4px;
+  line-height: 1.5;
+}
+.ai-citations summary {
+  font-size: var(--type-small);
+  color: var(--muted);
+  cursor: pointer;
+}
+.ai-citations .ai-references {
+  margin-top: 8px;
+}
+.ai-more-details {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  margin-top: 18px;
+}
+.ai-more-details > summary {
+  cursor: pointer;
+  color: var(--muted);
+}

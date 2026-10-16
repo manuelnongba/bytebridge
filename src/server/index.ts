@@ -1,3 +1,5 @@
+import { AI_LIMITS } from '../shared/ai.js';
+import { AIError, aiStatus, analyzeRoom } from './ai/service.js';
 import http from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -121,16 +123,30 @@ function respond(res: ServerResponse, code: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
-async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
-  let value = '';
+async function body(
+  req: IncomingMessage,
+  maxBytes = 4096,
+): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
 
   for await (const chunk of req) {
-    value += chunk;
+    const data = Buffer.from(chunk);
 
-    if (value.length > 4096) throw new Error('Request too large');
+    bytes += data.length;
+
+    if (bytes > maxBytes) throw new AIError(413, 'Request too large.');
+
+    chunks.push(data);
   }
 
-  return value ? JSON.parse(value) : {};
+  const value = Buffer.concat(chunks).toString('utf8');
+  const result = value ? JSON.parse(value) : {};
+
+  if (!result || typeof result !== 'object' || Array.isArray(result))
+    throw new AIError(400, 'Expected a JSON object.');
+
+  return result;
 }
 
 // Includes lazy project buffers plus Yjs history on reconnect; not a disk quota.
@@ -154,6 +170,56 @@ const handler = async (req: IncomingMessage, res: ServerResponse) => {
 
     if (url.pathname === '/health' && req.method === 'GET')
       return respond(res, 200, { ok: true });
+
+    const aiMatch = url.pathname.match(/^\/rooms\/([a-zA-Z0-9_-]{1,128})\/ai$/);
+
+    if (aiMatch) {
+      const id = aiMatch[1]!;
+      const token = String(req.headers.authorization || '').replace(
+        /^Bearer /,
+        '',
+      );
+
+      if (!access(id, token))
+        return respond(res, 403, { error: 'Room access is no longer valid.' });
+
+      if (req.method === 'GET') return respond(res, 200, aiStatus());
+
+      if (req.method !== 'POST')
+        return respond(res, 405, { error: 'Method not allowed' });
+
+      const input = await body(req, AI_LIMITS.requestBytes);
+
+      if (!access(id, token))
+        return respond(res, 403, { error: 'Room access is no longer valid.' });
+
+      if (res.destroyed) return;
+
+      const controller = new AbortController();
+      const cancel = () => controller.abort();
+
+      res.once('close', cancel);
+
+      const checkAccess = setInterval(() => {
+        if (!access(id, token)) cancel();
+      }, 1000);
+
+      try {
+        const result = await analyzeRoom(id, input, controller.signal);
+
+        if (!access(id, token))
+          return respond(res, 403, {
+            error: 'Room access is no longer valid.',
+          });
+
+        if (!res.destroyed) return respond(res, 200, result);
+      } finally {
+        clearInterval(checkAccess);
+        res.off('close', cancel);
+      }
+
+      return;
+    }
 
     if (url.pathname === '/rooms' && req.method === 'POST') {
       if (
@@ -346,8 +412,14 @@ const handler = async (req: IncomingMessage, res: ServerResponse) => {
     }
 
     respond(res, 405, { error: 'Method not allowed' });
-  } catch {
-    respond(res, 400, { error: 'Unable to process request.' });
+  } catch (error) {
+    if (!res.destroyed)
+      respond(res, error instanceof AIError ? error.status : 400, {
+        error:
+          error instanceof AIError
+            ? error.message
+            : 'Unable to process request.',
+      });
   }
 };
 
