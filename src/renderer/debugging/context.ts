@@ -114,14 +114,14 @@ export function initializeContext(
   const review = document.createElement('button');
 
   review.type = 'submit';
-  review.className = 'button secondary';
+  review.className = 'button primary';
   review.textContent = 'Save & share problem';
   review.id = 'review-context';
 
   const cancel = document.createElement('button');
 
   cancel.type = 'button';
-  cancel.className = 'button secondary';
+  cancel.className = 'button ghost';
   cancel.textContent = 'Discard draft';
   cancel.id = 'discard-context';
   cancel.onclick = () => {

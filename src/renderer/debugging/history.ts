@@ -15,7 +15,7 @@ import {
   fenced,
 } from '../resolution/data.js';
 import { checkpointFiles } from '../workspace/data.js';
-import { button, element, errorMessage } from '../ui/dom.js';
+import { button, element, errorMessage, setButtonVariant } from '../ui/dom.js';
 
 /** Keeps the existing Yjs collections and record IDs; no history migration/deletion. */
 export function initializeHistory(
@@ -106,6 +106,8 @@ export function initializeHistory(
 
   const confirm = button('Mark solved', 'confirm-solved');
 
+  setButtonVariant(confirm, 'primary');
+
   confirm.type = 'submit';
 
   const cancel = button('Cancel', 'cancel-solved', () => {
@@ -114,6 +116,8 @@ export function initializeHistory(
   });
 
   solveForm.append(label, warning, confirm, cancel);
+
+  setButtonVariant(cancel, 'ghost');
 
   const solve = button('Mark solved', 'mark-solved', () => {
     baseId = records.toArray().at(-1)?.id || null;

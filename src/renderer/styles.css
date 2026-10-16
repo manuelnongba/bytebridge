@@ -417,7 +417,7 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 8px;
   min-height: 36px;
   padding: var(--control-y) var(--control-x);
   border-radius: 7px;
@@ -432,13 +432,26 @@ select {
   background: var(--accent-hover);
 }
 .secondary {
-  background: var(--surface);
-  border-color: var(--button-border);
+  background: var(--control-surface);
+  border-color: var(--button-border-hover);
   color: var(--text);
 }
 .secondary:hover:not(:disabled) {
   background: var(--hover);
   border-color: var(--button-border-hover);
+}
+.button.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+.button.ghost:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+.button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
 }
 .room-bar {
   display: flex;
@@ -770,8 +783,13 @@ select {
   margin: 6px 6px 0 0;
 }
 .button.danger {
-  border-color: var(--danger-accent);
+  background: color-mix(in srgb, var(--danger-accent) 12%, var(--surface));
+  border-color: var(--danger-border);
   color: var(--danger-text);
+}
+.button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger-accent) 22%, var(--surface));
+  border-color: var(--danger-accent);
 }
 
 .problem-tools {

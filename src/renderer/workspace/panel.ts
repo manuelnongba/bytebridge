@@ -1,6 +1,6 @@
 import type * as Y from 'yjs';
 import type { RoomProvider, WorkspaceEditor } from '../../shared/contracts.js';
-import { element, errorMessage } from '../ui/dom.js';
+import { element, errorMessage, setButtonVariant } from '../ui/dom.js';
 import { APP_CONFIG } from '../app-config.js';
 import { closePanel, togglePanel } from '../ui/panels.js';
 import { LEGACY_FILE, workspaceFiles, removeProject } from './data.js';
@@ -223,6 +223,8 @@ export function initializeWorkspace(
 
   actions.className = 'workspace-actions';
   conflict.hidden = true;
+  setButtonVariant(save, 'primary');
+  setButtonVariant(stop, 'ghost');
   actions.append(pick, stop, save, copy);
   panel.replaceChildren(close, heading, help, actions, status, tree, conflict);
 

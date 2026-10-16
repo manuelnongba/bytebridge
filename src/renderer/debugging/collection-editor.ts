@@ -99,7 +99,7 @@ export function collectionEditor(
     const remove = document.createElement('button');
 
     remove.type = 'button';
-    remove.className = 'button secondary';
+    remove.className = 'button danger';
     remove.textContent = 'Remove entry';
     remove.onclick = () => {
       row.remove();

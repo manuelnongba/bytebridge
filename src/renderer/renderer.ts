@@ -596,7 +596,7 @@ async function manageInvites() {
 
       const button = document.createElement('button');
 
-      button.className = 'button secondary';
+      button.className = 'button danger';
       button.textContent = 'Revoke';
       button.disabled = invite.revoked;
       button.onclick = async () => {

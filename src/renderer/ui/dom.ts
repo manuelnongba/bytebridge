@@ -28,3 +28,11 @@ export function button(
 
   return result;
 }
+
+export function setButtonVariant(
+  target: HTMLButtonElement,
+  variant: 'primary' | 'secondary' | 'ghost' | 'danger',
+): void {
+  target.classList.remove('primary', 'secondary', 'ghost', 'danger');
+  target.classList.add(variant);
+}

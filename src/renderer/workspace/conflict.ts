@@ -127,7 +127,8 @@ export function showDiskConflict(
         },
       );
       const close = document.createElement('button');
-      close.className = 'button secondary';
+
+      close.className = 'button ghost';
       close.textContent = 'Close';
       close.onclick = () => closeTab();
       actions.append(close);

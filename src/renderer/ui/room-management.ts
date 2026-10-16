@@ -1,6 +1,6 @@
 import { APP_CONFIG } from '../app-config.js';
 import type { Room } from '../../shared/contracts.js';
-import { element, errorMessage } from './dom.js';
+import { element, errorMessage, setButtonVariant } from './dom.js';
 import { request } from '../collaboration/access.js';
 
 export function initializeRoomManagement({
@@ -124,6 +124,8 @@ export function initializeRoomManagement({
         toggle.focus();
       });
 
+      setButtonVariant(confirm, 'primary');
+      setButtonVariant(cancel, 'ghost');
       confirmation.append(confirm, cancel);
 
       if (inputLabel) input.focus();
@@ -223,7 +225,7 @@ export function initializeRoomManagement({
             `Type the room name exactly: ${room.title}`,
           );
 
-          confirm.classList.add('danger');
+          setButtonVariant(confirm, 'danger');
           confirm.disabled = true;
           input.oninput = () => (confirm.disabled = input.value !== room.title);
           confirmation.prepend(
