@@ -121,15 +121,27 @@ export class LocalProject {
     readonly root: string,
     readonly name: string,
     private identityKey?: Uint8Array,
+    restoredId?: string,
   ) {
-    this.id = identityKey
-      ? createHmac('sha256', identityKey).update(root).digest('hex')
-      : randomUUID();
+    this.id =
+      restoredId ||
+      (identityKey
+        ? createHmac('sha256', identityKey).update(root).digest('hex')
+        : randomUUID());
   }
 
-  static async select(directory: string, identityKey?: Uint8Array) {
+  static async select(
+    directory: string,
+    identityKey?: Uint8Array,
+    restoredId?: string,
+  ) {
     const root = await realpath(directory);
-    const project = new LocalProject(root, path.basename(root), identityKey);
+    const project = new LocalProject(
+      root,
+      path.basename(root),
+      identityKey,
+      restoredId,
+    );
     const skipped: Array<{ path: string; reason: string }> = [];
     let entries = 0,
       skippedCount = 0,

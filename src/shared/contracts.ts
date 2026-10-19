@@ -18,7 +18,19 @@ export interface ProjectManifest {
 
 export interface NativeAPI {
   ready(): Promise<string | null>;
-  openProject(): Promise<ProjectManifest | null>;
+  openProject(
+    expectedProjectId?: string,
+    scope?: string,
+  ): Promise<ProjectManifest | null>;
+  rememberProject(scope: string, projectId: string): Promise<void>;
+  forgetProject(scope: string, projectId?: string): Promise<void>;
+  restoreProjects(
+    scope: string,
+    projectIds: string[],
+  ): Promise<{
+    manifests: ProjectManifest[];
+    failed: string[];
+  }>;
   readProjectFile(
     projectId: string,
     fileId: string,

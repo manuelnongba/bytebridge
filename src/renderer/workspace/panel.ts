@@ -40,6 +40,9 @@ export function initializeWorkspace(
     ? readWorkspace(preferenceKey)
     : { opened: [], active: '' };
   let restored = false;
+  let pendingOfflineFile: string | null = null;
+  const rememberedProjects = new Set<string>();
+  let knownProjects = new Set<string>();
   let closeConflict = () => {};
   const persist = () => {
     if (restored && APP_CONFIG.navigation.restoreWorkspace)
@@ -91,39 +94,76 @@ export function initializeWorkspace(
   tree.id = 'file-tree';
   tree.setAttribute('aria-label', 'Room files');
 
-  const pick = button('Share project…', 'open-project', async () => {
-    if (denied || loading || !provider.synced) return;
+  async function connectProject(expectedProjectId?: string) {
+    if (!alive || denied || loading || saving || !provider.synced) return;
 
     loading = true;
     render();
 
     try {
-      const manifest = await window.api.openProject();
+      const manifest = await window.api.openProject(
+        expectedProjectId,
+        preferenceKey,
+      );
 
       if (!manifest) return;
 
-      if (!alive || denied || !provider.synced) {
+      if (
+        !alive ||
+        denied ||
+        !provider.synced ||
+        (expectedProjectId &&
+          !workspaceFiles(doc).some(
+            (file) => file.projectId === expectedProjectId,
+          ))
+      ) {
         await window.api.closeProject(manifest.id);
 
         return;
       }
 
       await hosting.add(manifest);
+
+      if (!alive || denied) return;
+
+      await window.api.rememberProject(preferenceKey, manifest.id);
+      rememberedProjects.add(manifest.id);
       status.textContent = `${manifest.name}: ${manifest.files.length} file names shared; ${manifest.skippedCount} files/folders excluded.${manifest.truncated ? ' Partial list: scan limit reached.' : ''} Contents load on demand.`;
+
+      const pending = workspaceFiles(doc).find(
+        (file) =>
+          file.id === pendingOfflineFile && file.projectId === manifest.id,
+      );
+
+      if (pending) await open(pending.id);
     } catch (error) {
       if (alive) status.textContent = errorMessage(error);
     } finally {
       loading = false;
       render();
     }
-  });
-  const stop = button('Stop hosting', 'stop-hosting', async () => {
-    closeConflict();
-    await hosting.stop();
+  }
 
-    if (alive)
-      status.textContent =
-        'Hosting stopped. Loaded buffers and history remain shared; unopened files are unavailable. Sharing the same folder again reuses its room files.';
+  const pick = button('Share project…', 'open-project', () => connectProject());
+  const stop = button('Stop hosting', 'stop-hosting', async () => {
+    if (loading) return;
+
+    closeConflict();
+
+    try {
+      await window.api.forgetProject(preferenceKey);
+      rememberedProjects.clear();
+      await hosting.stop();
+
+      if (alive)
+        status.textContent =
+          'Hosting stopped and automatic reconnection disabled for this room. Loaded buffers and history remain shared.';
+    } catch (error) {
+      await hosting.stop();
+
+      if (alive)
+        status.textContent = `Hosting stopped, but saved access could not be cleared: ${errorMessage(error)}`;
+    }
   });
   const save = button('Save to project', 'save-project-file', async () => {
     const file = workspaceFiles(doc).find((item) => item.id === currentId);
@@ -236,6 +276,16 @@ export function initializeWorkspace(
 
     if (!file || denied) return;
 
+    pendingOfflineFile = null;
+
+    if (!file.text && file.projectId && !hosting.online(file.projectId)) {
+      pendingOfflineFile = file.id;
+      status.textContent =
+        'This folder is offline. Use the reconnect or locate action beside the project if you shared it. Otherwise, ask its host to reopen the room.';
+
+      return;
+    }
+
     try {
       if (!file.text) {
         status.textContent = `Loading ${file.path} from its host…`;
@@ -265,6 +315,24 @@ export function initializeWorkspace(
     if (!alive) return;
 
     const files = workspaceFiles(doc);
+
+    if (restored && provider.synced) {
+      const projects = new Set(
+        files.flatMap((file) => (file.projectId ? [file.projectId] : [])),
+      );
+
+      for (const id of knownProjects) {
+        if (!projects.has(id)) {
+          rememberedProjects.delete(id);
+          void window.api.forgetProject(preferenceKey, id).catch((error) => {
+            if (alive) status.textContent = errorMessage(error);
+          });
+        }
+      }
+
+      knownProjects = projects;
+    }
+
     const current = files.find((file) => file.id === currentId);
     for (let i = opened.length - 1; i >= 0; i--) {
       const id = opened[i]!;
@@ -285,7 +353,8 @@ export function initializeWorkspace(
       : [];
 
     pick.disabled = denied || loading || !provider.synced;
-    stop.hidden = !hosting.local.size;
+    stop.hidden = !hosting.local.size && !rememberedProjects.size;
+    stop.disabled = loading;
     save.hidden = !hosting.local.has(current.projectId || '');
     save.disabled = denied || saving || !current.text || editor.isReviewing();
     copy.disabled = editor.isReviewing();
@@ -299,6 +368,7 @@ export function initializeWorkspace(
       opened,
       denied,
       synced: provider.synced,
+      loading,
       saving,
       files: files.map(({ id, path, mode, projectId, projectName, text }) => ({
         id,
@@ -402,6 +472,33 @@ export function initializeWorkspace(
           label.append(folderName);
           if (key === file.projectId) {
             label.classList.add('project-heading');
+
+            if (!hosting.online(file.projectId)) {
+              const reconnect = button(
+                rememberedProjects.has(file.projectId!)
+                  ? 'Locate folder…'
+                  : 'Reconnect folder…',
+                null,
+                () => {},
+              );
+
+              reconnect.classList.add('reconnect-project');
+              reconnect.setAttribute(
+                'aria-label',
+                `Reconnect ${file.projectName} folder`,
+              );
+              reconnect.title =
+                'Select the folder using the profile that shared it';
+              reconnect.disabled =
+                denied || !provider.synced || loading || saving;
+              reconnect.onclick = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void connectProject(file.projectId);
+              };
+              label.append(reconnect);
+            }
+
             const remove = button('×', null, () => {});
             remove.className = 'remove-project';
             remove.setAttribute(
@@ -479,8 +576,70 @@ export function initializeWorkspace(
   panel.onkeydown = (event) => {
     if (event.key === 'Escape') close.click();
   };
+  async function restoreHosting() {
+    loading = true;
+    render();
+
+    try {
+      const ids = [
+        ...new Set(
+          workspaceFiles(doc).flatMap((file) =>
+            file.projectId ? [file.projectId] : [],
+          ),
+        ),
+      ];
+      const result = await window.api.restoreProjects(preferenceKey, ids);
+
+      for (const id of result.failed) rememberedProjects.add(id);
+
+      for (const manifest of result.manifests) {
+        if (
+          !alive ||
+          denied ||
+          !provider.synced ||
+          !workspaceFiles(doc).some((file) => file.projectId === manifest.id)
+        ) {
+          await window.api.closeProject(manifest.id);
+          continue;
+        }
+
+        try {
+          await hosting.add(manifest);
+          rememberedProjects.add(manifest.id);
+        } catch {
+          rememberedProjects.add(manifest.id);
+          result.failed.push(manifest.id);
+        }
+      }
+
+      if (!alive || denied) return;
+
+      if (result.failed.length)
+        status.textContent =
+          'Some folders could not reconnect. Use Locate folder… beside the project to select its current location.';
+      else if (result.manifests.length)
+        status.textContent =
+          'Your shared folders reconnected. Shared edits are preserved; saving still checks for disk changes.';
+
+      const pending = workspaceFiles(doc).find(
+        (file) =>
+          file.id === pendingOfflineFile &&
+          hosting.local.has(file.projectId || ''),
+      );
+
+      if (pending) await open(pending.id);
+    } catch (error) {
+      if (alive)
+        status.textContent = `Folders could not reconnect: ${errorMessage(error)}`;
+    } finally {
+      loading = false;
+      render();
+    }
+  }
+
   const restore = () => {
     if (restored || !provider.synced || denied) return;
+
     restored = true;
     const files = workspaceFiles(doc);
     const restoredIds = [...new Set(remembered.opened)].filter((id) =>
@@ -493,9 +652,14 @@ export function initializeWorkspace(
     )
       void open(remembered.active);
     else {
+      if (files.some((file) => file.id === remembered.active))
+        pendingOfflineFile = remembered.active;
+
       render();
       persist();
     }
+
+    void restoreHosting();
   };
   element('editor-panel').addEventListener('review-change', render);
   provider.on('sync', restore);

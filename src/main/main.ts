@@ -7,6 +7,8 @@ import { invitationFrom } from './invitations.js';
 import { mkdirSync } from 'node:fs';
 import { profileFrom, profileDirectory } from './profiles.js';
 import { LocalProject } from './project-files.js';
+import { projectAccess } from './project-access.js';
+import type { ProjectManifest } from '../shared/contracts.js';
 
 let win: BrowserWindow | null = null;
 let rendererReady = false;
@@ -231,55 +233,164 @@ async function projectIdentityKey() {
   return key;
 }
 
-ipcMain.handle('project:open', async (event) => {
-  const owned = trustedProjectSender(event);
+let access: ReturnType<typeof projectAccess> | undefined;
 
-  if (owned.size >= 4)
-    throw new Error('Stop hosting before opening more than four projects.');
+function savedAccess(scope: string) {
+  if (
+    typeof scope !== 'string' ||
+    !scope.startsWith('bytebridge-workspace:') ||
+    scope.length > 4096
+  )
+    throw new Error('Invalid room scope.');
 
-  if (importingFolder) throw new Error('A project picker is already open.');
+  return (access ||= projectAccess(userData));
+}
 
-  importingFolder = true;
+ipcMain.handle('project:remember', (event, scope: string, id: string) => {
+  const project = trustedProjectSender(event).get(id);
 
-  try {
-    const result = await dialog.showOpenDialog({
-      title: 'Choose the project or subfolder to share',
-      properties: ['openDirectory'],
-    });
+  if (!project) throw new Error('Project hosting stopped.');
 
-    if (result.canceled || !result.filePaths[0]) return null;
+  savedAccess(scope).remember(scope, id, project.root);
+});
 
-    const root = await realpath(result.filePaths[0]);
-    if ([...owned.values()].some((project) => project.root === root))
-      throw new Error('This project is already shared from this window.');
-    const { project, manifest } = await LocalProject.select(
-      root,
-      await projectIdentityKey(),
-    );
-    const confirmation = await dialog.showMessageBox({
-      type: 'warning',
-      title: 'Share project scope?',
-      message: `Share ${manifest.files.length} file names from ${manifest.name}?`,
-      detail: `${project.root}\n\n${manifest.skippedCount} files/folders excluded using .gitignore and built-in safety rules.${manifest.truncated ? ' The scan limit was reached; only this partial file list will be shared.' : ''}\n\nRoom participants can request any listed file while you host. Contents load on demand and remain in room storage/history. Exclusions are not a secret detector: choose a narrower subfolder or use a snippet for sensitive projects. Only you can explicitly save shared edits to these originals.`,
-      buttons: ['Cancel', 'Share project'],
-      defaultId: 0,
-      cancelId: 0,
-    });
+ipcMain.handle('project:forget', (event, scope: string, id?: string) => {
+  trustedProjectSender(event);
+  savedAccess(scope).forget(scope, id);
+});
 
-    if (confirmation.response !== 1 || event.sender.isDestroyed()) {
-      project.close();
+ipcMain.handle(
+  'project:restore',
+  async (event, scope: string, ids: string[]) => {
+    const owned = trustedProjectSender(event);
+    const approvals = savedAccess(scope);
+    const manifests: ProjectManifest[] = [];
+    const failed: string[] = [];
 
-      return null;
+    if (
+      !Array.isArray(ids) ||
+      ids.length > 2000 ||
+      ids.some((id) => typeof id !== 'string')
+    )
+      throw new Error('Invalid project list.');
+
+    approvals.retain(scope, ids);
+
+    for (const id of new Set(ids)) {
+      const root = approvals.get(scope, id);
+
+      if (!root || owned.has(id)) continue;
+
+      if (owned.size >= 4) {
+        failed.push(id);
+        continue;
+      }
+
+      try {
+        const { project, manifest } = await LocalProject.select(
+          root,
+          await projectIdentityKey(),
+          id,
+        );
+
+        if (
+          event.sender.isDestroyed() ||
+          event.senderFrame !== event.sender.mainFrame ||
+          approvals.get(scope, id) !== root
+        ) {
+          project.close();
+          continue;
+        }
+
+        owned.set(id, project);
+        manifests.push(manifest);
+      } catch {
+        // Keep filesystem paths and OS errors on this device.
+        failed.push(id);
+      }
     }
 
-    trustedProjectSender(event);
-    owned.set(project.id, project);
+    return { manifests, failed };
+  },
+);
 
-    return manifest;
-  } finally {
-    importingFolder = false;
-  }
-});
+ipcMain.handle(
+  'project:open',
+  async (event, expectedProjectId?: string, scope?: string) => {
+    const owned = trustedProjectSender(event);
+
+    if (
+      expectedProjectId !== undefined &&
+      (typeof expectedProjectId !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(expectedProjectId))
+    )
+      throw new Error('Invalid project identity.');
+
+    if (owned.size >= 4)
+      throw new Error('Stop hosting before opening more than four projects.');
+
+    if (importingFolder) throw new Error('A project picker is already open.');
+
+    importingFolder = true;
+
+    try {
+      const result = await dialog.showOpenDialog({
+        title: expectedProjectId
+          ? 'Reconnect: choose the shared folder'
+          : 'Choose the project or subfolder to share',
+        properties: ['openDirectory'],
+      });
+
+      if (result.canceled || !result.filePaths[0]) return null;
+
+      const root = await realpath(result.filePaths[0]);
+      if ([...owned.values()].some((project) => project.root === root))
+        throw new Error('This project is already shared from this window.');
+      const { project, manifest } = await LocalProject.select(
+        root,
+        await projectIdentityKey(),
+        expectedProjectId &&
+          scope &&
+          savedAccess(scope).get(scope, expectedProjectId)
+          ? expectedProjectId
+          : undefined,
+      );
+
+      if (expectedProjectId && manifest.id !== expectedProjectId) {
+        project.close();
+
+        throw new Error(
+          'This folder does not match the shared project. Choose its original folder using the same ByteBridge profile that shared it.',
+        );
+      }
+
+      const confirmation = await dialog.showMessageBox({
+        type: 'warning',
+        title: expectedProjectId
+          ? 'Reconnect project scope?'
+          : 'Share project scope?',
+        message: `Share ${manifest.files.length} file names from ${manifest.name}?`,
+        detail: `${project.root}\n\n${manifest.skippedCount} files/folders excluded using .gitignore and built-in safety rules.${manifest.truncated ? ' The scan limit was reached; only this partial file list will be shared.' : ''}\n\nRoom participants can request any listed file while you host. Contents load on demand and remain in room storage/history. Exclusions are not a secret detector: choose a narrower subfolder or use a snippet for sensitive projects. Only you can explicitly save shared edits to these originals. This profile will remember the folder for this room and reconnect it when you return. Stop hosting or remove the project to forget access.`,
+        buttons: ['Cancel', 'Share project'],
+        defaultId: 0,
+        cancelId: 0,
+      });
+
+      if (confirmation.response !== 1 || event.sender.isDestroyed()) {
+        project.close();
+
+        return null;
+      }
+
+      trustedProjectSender(event);
+      owned.set(project.id, project);
+
+      return manifest;
+    } finally {
+      importingFolder = false;
+    }
+  },
+);
 
 for (const operation of [
   'read',

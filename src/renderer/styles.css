@@ -1204,20 +1204,53 @@ dialog::backdrop {
   color: var(--muted);
   font-size: var(--type-small);
 }
+#file-tree .project-heading {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 6px 8px;
+  list-style: none;
+}
+.project-heading::-webkit-details-marker {
+  display: none;
+}
+.project-heading::before {
+  content: '▸';
+  grid-column: 1;
+  grid-row: 1;
+  color: var(--muted);
+  text-align: center;
+}
+details[open] > .project-heading::before {
+  content: '▾';
+}
+.project-heading > span {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .project-heading .remove-project {
-  float: right;
-  padding: 0 6px;
+  grid-column: 3;
+  grid-row: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
   background: transparent;
   border: 0;
+  border-radius: var(--radius-sm);
   color: var(--muted);
   cursor: pointer;
   font-size: 18px;
-  line-height: 1.2;
+  line-height: 1;
 }
-.project-heading .remove-project:hover {
+.project-heading .remove-project:hover:not(:disabled) {
   color: var(--danger-text);
   background: var(--hover);
-  border-radius: var(--radius-sm);
 }
 .checkpoint-comparison-options {
   margin-top: var(--space-md);
@@ -1295,4 +1328,21 @@ dialog::backdrop {
 .ai-more-details > summary {
   cursor: pointer;
   color: var(--muted);
+}
+
+#file-tree .reconnect-project {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: start;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  margin: 0;
+  padding: 3px 8px;
+  min-height: 28px;
+  border: 1px solid var(--button-border-hover);
+  background: var(--control-surface);
+  color: var(--accent);
+  font-size: var(--type-small);
+  font-weight: 600;
 }

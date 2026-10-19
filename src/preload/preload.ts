@@ -3,7 +3,14 @@ import type { NativeAPI } from '../shared/contracts.js';
 
 const api: NativeAPI = {
   ready: () => ipcRenderer.invoke('renderer:ready'),
-  openProject: () => ipcRenderer.invoke('project:open'),
+  openProject: (expectedProjectId, scope) =>
+    ipcRenderer.invoke('project:open', expectedProjectId, scope),
+  rememberProject: (scope, projectId) =>
+    ipcRenderer.invoke('project:remember', scope, projectId),
+  forgetProject: (scope, projectId) =>
+    ipcRenderer.invoke('project:forget', scope, projectId),
+  restoreProjects: (scope, projectIds) =>
+    ipcRenderer.invoke('project:restore', scope, projectIds),
   readProjectFile: (projectId: string, fileId: string) =>
     ipcRenderer.invoke('project:read', projectId, fileId),
   inspectProjectFile: (projectId, fileId) =>
