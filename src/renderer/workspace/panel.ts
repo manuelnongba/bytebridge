@@ -44,6 +44,7 @@ export function initializeWorkspace(
   const rememberedProjects = new Set<string>();
   let knownProjects = new Set<string>();
   let closeConflict = () => {};
+  let renderedDiskChanges = '';
   const persist = () => {
     if (restored && APP_CONFIG.navigation.restoreWorkspace)
       saveWorkspace(preferenceKey, opened, currentId);
@@ -88,6 +89,18 @@ export function initializeWorkspace(
 
   status.id = 'files-status';
   status.setAttribute('role', 'status');
+
+  const diskNotice = document.createElement('section');
+
+  diskNotice.className = 'disk-change-notice';
+  diskNotice.hidden = true;
+  diskNotice.setAttribute('aria-label', 'Files changed on disk');
+
+  const diskCheckStatus = document.createElement('p');
+
+  diskCheckStatus.className = 'panel-help';
+  diskCheckStatus.setAttribute('role', 'status');
+  diskCheckStatus.hidden = true;
 
   const tree = document.createElement('nav');
 
@@ -231,10 +244,12 @@ export function initializeWorkspace(
       if (alive) copy.disabled = false;
     }
   });
-  const conflict = button('Review disk changes…', 'review-disk-changes', () => {
-    const file = workspaceFiles(doc).find((item) => item.id === currentId);
+
+  function reviewDisk(id: string) {
+    const file = workspaceFiles(doc).find((item) => item.id === id);
     if (
       !file?.text ||
+      !alive ||
       denied ||
       saving ||
       !hosting.local.has(file.projectId || '')
@@ -258,7 +273,11 @@ export function initializeWorkspace(
       },
       editor,
     );
-  });
+  }
+
+  const conflict = button('Review disk changes…', 'review-disk-changes', () =>
+    reviewDisk(currentId),
+  );
   const actions = document.createElement('div');
 
   actions.className = 'workspace-actions';
@@ -266,7 +285,17 @@ export function initializeWorkspace(
   setButtonVariant(save, 'primary');
   setButtonVariant(stop, 'ghost');
   actions.append(pick, stop, save, copy);
-  panel.replaceChildren(close, heading, help, actions, status, tree, conflict);
+  panel.replaceChildren(
+    close,
+    heading,
+    help,
+    actions,
+    status,
+    diskNotice,
+    diskCheckStatus,
+    tree,
+    conflict,
+  );
 
   const hosting = createHosting(doc, provider, config, window.api, render);
 
@@ -360,6 +389,69 @@ export function initializeWorkspace(
     copy.disabled = editor.isReviewing();
     conflict.hidden = true;
     conflict.disabled = denied || saving || !current.text;
+
+    diskCheckStatus.hidden = !hosting.diskCheckError;
+    diskCheckStatus.textContent = hosting.diskCheckError;
+
+    const diskFiles = files.filter((file) => hosting.diskChanges.has(file.id));
+    toggle.textContent = diskFiles.length
+      ? `Files · ${diskFiles.length} changed`
+      : 'Files';
+
+    const diskSignature = JSON.stringify([
+      denied,
+      saving,
+      diskFiles.map((file) => [
+        file.id,
+        file.path,
+        hosting.diskChanges.get(file.id),
+      ]),
+    ]);
+
+    if (diskSignature !== renderedDiskChanges) {
+      renderedDiskChanges = diskSignature;
+      diskNotice.hidden = !diskFiles.length;
+      diskNotice.replaceChildren();
+
+      const message = document.createElement('p');
+
+      message.setAttribute('role', 'status');
+      message.textContent = diskFiles.some(
+        (file) => hosting.diskChanges.get(file.id) === 'changed',
+      )
+        ? 'Files changed on disk. Review before updating the shared session.'
+        : 'Some shared files are missing from disk. Their shared content is kept.';
+      diskNotice.append(message);
+
+      for (const file of diskFiles) {
+        const row = document.createElement('div');
+        const name = document.createElement('span');
+        const review = button('Review…', null, () => reviewDisk(file.id));
+        const unavailable = hosting.diskChanges.get(file.id) === 'unavailable';
+
+        row.className = 'disk-change-file';
+        name.textContent = `${file.projectName}/${file.path}${unavailable ? ' · unavailable on disk' : ''}`;
+        review.setAttribute(
+          'aria-label',
+          `Review disk changes for ${file.path}`,
+        );
+        review.disabled = denied || saving || unavailable;
+        row.append(name, review);
+        diskNotice.append(row);
+      }
+
+      if (
+        diskFiles.some(
+          (file) => hosting.diskChanges.get(file.id) === 'unavailable',
+        )
+      ) {
+        const help = document.createElement('small');
+
+        help.textContent =
+          'Unavailable files may have been removed or moved. Their shared content is kept. Restore access to review them.';
+        diskNotice.append(help);
+      }
+    }
 
     const signature = JSON.stringify({
       currentId,
@@ -661,6 +753,15 @@ export function initializeWorkspace(
 
     void restoreHosting();
   };
+  const checkDisk = () => {
+    if (!alive || denied || loading || saving || document.hidden) return;
+
+    void hosting.checkDisk();
+  };
+  const diskTimer = window.setInterval(checkDisk, 5000);
+
+  window.addEventListener('focus', checkDisk);
+  document.addEventListener('visibilitychange', checkDisk);
   element('editor-panel').addEventListener('review-change', render);
   provider.on('sync', restore);
   provider.on('sync', render);
@@ -670,6 +771,9 @@ export function initializeWorkspace(
 
   const dispose = () => {
     persist();
+    window.clearInterval(diskTimer);
+    window.removeEventListener('focus', checkDisk);
+    document.removeEventListener('visibilitychange', checkDisk);
     element('editor-panel').removeEventListener('review-change', render);
     closeConflict();
     alive = false;
@@ -682,6 +786,7 @@ export function initializeWorkspace(
     panel.hidden = toggle.hidden = tabs.hidden = true;
     toggle.onclick = panel.onkeydown = null;
     title.textContent = 'Shared code';
+    toggle.textContent = 'Files';
   };
 
   dispose.open = open;

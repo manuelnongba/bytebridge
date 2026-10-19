@@ -35,6 +35,12 @@ export interface NativeAPI {
     projectId: string,
     fileId: string,
   ): Promise<{ content: string }>;
+  checkProjectFile(
+    projectId: string,
+    fileId: string,
+  ): Promise<
+    'changed' | 'unchanged' | 'unavailable' | 'busy' | 'untracked' | 'error'
+  >;
   inspectProjectFile(
     projectId: string,
     fileId: string,

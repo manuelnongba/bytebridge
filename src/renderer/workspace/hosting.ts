@@ -1,5 +1,8 @@
+import { APP_CONFIG } from '../app-config.js';
+import { createEvent } from '../investigation/events.js';
 import { workspaceFiles, shareProject, loadProjectFile } from './data.js';
 import type {
+  InvestigationEvent,
   NativeAPI,
   ProjectManifest,
   WorkspaceConfig,
@@ -20,6 +23,9 @@ export function createHosting(
   const local = new Map<string, ProjectManifest>();
   const saved = new Map<string, string>();
   const needsReview = new Set<string>();
+  const diskChanges = new Map<string, 'changed' | 'unavailable'>();
+  let checking = false;
+  let diskCheckError = '';
   const pending = new Map<
     string,
     { nonce: string; resolve(): void; reject(error: Error): void }
@@ -77,10 +83,14 @@ export function createHosting(
         void api.closeProject(id).catch(() => {});
         advertise();
       }
+    for (const id of diskChanges.keys())
+      if (!local.has(file(id)?.projectId || '')) diskChanges.delete(id);
+
     for (const id of saved.keys())
       if (!file(id)) {
         saved.delete(id);
         needsReview.delete(id);
+        diskChanges.delete(id);
       }
     for (const [id, request] of pending) {
       if (!file(id)) {
@@ -166,6 +176,89 @@ export function createHosting(
   return {
     local,
     online,
+    diskChanges,
+    get diskCheckError() {
+      return diskCheckError;
+    },
+    async checkDisk() {
+      if (!alive || checking) return;
+
+      checking = true;
+
+      let checkError = '';
+
+      try {
+        for (const entry of workspaceFiles(doc)) {
+          if (!alive) break;
+          if (!entry.text || !local.has(entry.projectId || '')) continue;
+
+          const project = local.get(entry.projectId!);
+
+          try {
+            const state = await api.checkProjectFile(
+              entry.projectId!,
+              entry.id,
+            );
+
+            if (
+              !alive ||
+              local.get(entry.projectId!) !== project ||
+              !file(entry.id)
+            )
+              continue;
+            if (state === 'busy') continue;
+
+            if (state === 'untracked') {
+              // Share the existing load queue instead of racing file reads.
+              const task = queue.then(() =>
+                loadLocal(entry.projectId!, entry.id),
+              );
+
+              queue = task.catch(() => {});
+              await task;
+              diskChanges.delete(entry.id);
+              continue;
+            }
+
+            if (state === 'error') {
+              checkError =
+                'Some files could not be checked. Shared content is unchanged; disk checks will retry automatically.';
+              continue;
+            }
+
+            if (state === 'changed' || state === 'unavailable')
+              diskChanges.set(entry.id, state);
+            else if (needsReview.has(entry.id))
+              diskChanges.set(entry.id, 'changed');
+            else diskChanges.delete(entry.id);
+          } catch (error) {
+            if (
+              alive &&
+              local.get(entry.projectId!) === project &&
+              file(entry.id)
+            ) {
+              const message = error instanceof Error ? error.message : '';
+
+              if (message.includes('File operation already in progress'))
+                continue;
+
+              checkError =
+                message.includes('No handler registered') ||
+                message.includes('checkProjectFile is not a function')
+                  ? 'Restart ByteBridge to enable disk-change detection. Shared content is unchanged.'
+                  : 'Disk-change detection could not complete. Shared content is unchanged; checks will retry automatically.';
+            }
+          }
+        }
+      } finally {
+        checking = false;
+
+        if (alive) {
+          diskCheckError = checkError;
+          changed();
+        }
+      }
+    },
     isDirty(entry: WorkspaceFile) {
       return (
         !!entry.projectId &&
@@ -189,6 +282,7 @@ export function createHosting(
         );
       await api.saveProjectFile(entry.projectId!, entry.id, content);
       saved.set(entry.id, content);
+      diskChanges.delete(entry.id);
       changed();
     },
     async acceptDisk(
@@ -213,20 +307,74 @@ export function createHosting(
       );
       if (!alive || !local.has(entry.projectId || ''))
         throw new Error('Hosting stopped.');
-      saved.set(entry.id, result.content);
-      needsReview.delete(entry.id);
+
       if (reload) {
-        if (entry.text?.toString() !== expected)
+        if (entry.text?.toString() !== expected) {
+          needsReview.add(entry.id);
+          diskChanges.set(entry.id, 'changed');
+          changed();
           throw new Error(
             'A teammate edited this file. Refresh before reloading.',
           );
+        }
         if (result.content !== disk)
           throw new Error('Disk changed. Refresh before reloading.');
-        doc.transact(() => {
-          entry.text!.delete(0, entry.text!.length);
-          entry.text!.insert(0, disk);
-        });
+
+        if (expected !== disk) {
+          const events = doc.getArray<InvestigationEvent>(
+            'investigation-events',
+          );
+          let recovery: InvestigationEvent;
+
+          try {
+            recovery = createEvent(
+              {
+                type: 'checkpoint',
+                title: `Before keeping disk: ${entry.path}`.slice(0, 160),
+                notes:
+                  'Automatic recovery checkpoint of this file before replacing its shared content with the reviewed disk version.',
+                output: '',
+                parentId: '',
+              },
+              events.toArray(),
+              APP_CONFIG.timeline,
+              {
+                author: String(awareness.getLocalState()?.user?.name || 'Host'),
+                code: '',
+                language: entry.language,
+                issue: String(doc.getMap('debug-context').get('problem') || ''),
+                files: [
+                  {
+                    id: entry.id,
+                    path: entry.path,
+                    mode: entry.mode,
+                    language: entry.language,
+                    code: expected,
+                  },
+                ],
+              },
+            );
+          } catch {
+            needsReview.add(entry.id);
+            diskChanges.set(entry.id, 'changed');
+            changed();
+            throw new Error(
+              'Could not save a recovery checkpoint. Shared content was not replaced. Check the file size and history limits before retrying.',
+            );
+          }
+
+          // No await between recording the reviewed snapshot and replacing it.
+          doc.transact(() => {
+            events.push([recovery]);
+            entry.text!.delete(0, entry.text!.length);
+            entry.text!.insert(0, disk);
+          });
+        }
       }
+
+      saved.set(entry.id, result.content);
+      needsReview.delete(entry.id);
+      diskChanges.delete(entry.id);
       changed();
     },
     async add(manifest: ProjectManifest) {
@@ -301,6 +449,8 @@ export function createHosting(
       local.clear();
       saved.clear();
       needsReview.clear();
+      diskChanges.clear();
+      diskCheckError = '';
       advertise();
       await Promise.all(ids.map((id) => api.closeProject(id).catch(() => {})));
       changed();
@@ -320,6 +470,8 @@ export function createHosting(
       local.clear();
       saved.clear();
       needsReview.clear();
+      diskChanges.clear();
+      diskCheckError = '';
       awareness.setLocalStateField('hostedProjects', []);
       awareness.setLocalStateField('workspaceRequest', null);
       awareness.setLocalStateField('workspaceResponse', null);

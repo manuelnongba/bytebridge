@@ -398,6 +398,7 @@ for (const operation of [
   'save',
   'close',
   'inspect',
+  'check',
   'accept',
 ] as const) {
   ipcMain.handle(
@@ -416,6 +417,7 @@ for (const operation of [
       }
 
       try {
+        if (operation === 'check') return await project.check(fileId);
         if (operation === 'inspect') return await project.inspect(fileId);
         if (operation === 'accept')
           return await project.accept(fileId, content);

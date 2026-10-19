@@ -1435,3 +1435,35 @@ select option {
   opacity: 0.4;
   cursor: default;
 }
+
+.disk-change-notice {
+  margin-block: var(--space-md);
+  padding: var(--space-md);
+  border: 1px solid var(--notice-border);
+  border-radius: var(--radius-sm);
+  background: var(--notice-surface);
+}
+.disk-change-notice > p {
+  margin: 0 0 var(--space-sm);
+  color: var(--notice-text);
+}
+.disk-change-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-block: var(--space-xs);
+}
+.disk-change-file > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.disk-change-file > button {
+  flex-shrink: 0;
+  margin: 0;
+}
+.disk-change-notice > small {
+  display: block;
+  margin-top: var(--space-sm);
+  color: var(--muted);
+}

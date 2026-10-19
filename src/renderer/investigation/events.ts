@@ -98,7 +98,7 @@ export function createEvent(
       ? {
           code,
           language,
-          ...(files && files.length > 1
+          ...(files && files.length > 0
             ? { files: files.map((file) => ({ ...file })) }
             : {}),
         }

@@ -23,19 +23,30 @@ export function showDiskConflict(
     render(container, closeTab) {
       let mounted = true;
       const dialog = document.createElement('section');
+
       dialog.className = 'disk-review';
       dialog.setAttribute('aria-labelledby', 'conflict-heading');
+
       const heading = document.createElement('h2');
+
       heading.id = 'conflict-heading';
       heading.textContent = `Review disk changes: ${file.path}`;
+
       const help = document.createElement('p');
+
       help.textContent =
-        'Compare current disk content (original) with the room snapshot (modified). Export the room version for a manual merge, then refresh this comparison. Reloading requires saving a recovery copy first. Accepting a disk version never writes to disk; use Save to project afterward.';
+        'Keep disk version brings the reviewed file into the shared session, automatically saving the previous room version in History & checkpoints. Keep room version preserves shared edits; use Save to project when ready to write them to disk.';
+
       const view = document.createElement('div');
+
       view.className = 'disk-diff';
+
       const status = document.createElement('p');
+
       status.setAttribute('role', 'status');
+
       const actions = document.createElement('div');
+
       actions.className = 'workspace-actions';
       let disposeDiff = () => {};
       let review: { content: string; token: string } | null = null;
@@ -43,6 +54,7 @@ export function showDiskConflict(
         busy = false;
       const button = (label: string, run: () => Promise<void>) => {
         const el = document.createElement('button');
+        el.type = 'button';
         el.className = 'button secondary';
         el.textContent = label;
         el.onclick = async () => {
@@ -83,55 +95,56 @@ export function showDiskConflict(
           file.path + '.room-copy',
           room,
         );
+
         if (mounted)
           status.textContent = result.canceled
             ? 'Export canceled.'
             : 'Room snapshot exported. Merge externally, then refresh.';
       });
-      const reload = button('Export & reload disk into room…', async () => {
+      const reload = button('Keep disk version', async () => {
         if (!review) return;
+
         const current = review;
-        if (room !== current.content) {
-          const result = await window.api.saveWorkspaceFile(
-            file.path + '.room-copy',
-            room,
-          );
-          if (result.canceled) {
-            status.textContent =
-              'Reload canceled; both versions are unchanged.';
-            return;
-          }
-        }
+
         if (!mounted || !options.allowed()) return;
         await options.accept(current.token, current.content, true, room);
         options.report(
-          'Disk content loaded into the shared room. Previous room content was exported if different.',
+          room === current.content
+            ? 'Disk and room versions already match. No recovery checkpoint was needed.'
+            : 'Disk version kept. The previous room version is available in Problem → History & checkpoints.',
         );
         closeTab();
       });
-      const keep = button(
-        'Keep room version & allow explicit save',
-        async () => {
-          if (!review) return;
-          if (
-            !window.confirm(
-              'Keep the room version? The next Save to project will replace the reviewed disk version. Export or merge first if you need to keep both.',
-            )
+      const keep = button('Keep room version', async () => {
+        if (!review) return;
+        if (
+          !window.confirm(
+            'Keep the room version? The next Save to project will replace the reviewed disk version. Export or merge first if you need to keep both.',
           )
-            return;
-          await options.accept(review.token, review.content, false, room);
-          options.report(
-            'Reviewed disk version accepted as the baseline. Room edits are retained. Use Save to project explicitly when ready.',
-          );
-          closeTab();
-        },
-      );
+        )
+          return;
+        await options.accept(review.token, review.content, false, room);
+        options.report(
+          'Room version kept. Use Save to project when ready to write it to disk.',
+        );
+        closeTab();
+      });
       const close = document.createElement('button');
 
+      close.type = 'button';
       close.className = 'button ghost';
       close.textContent = 'Close';
       close.onclick = () => closeTab();
-      actions.append(close);
+      const tools = document.createElement('div');
+
+      tools.className = 'workspace-actions';
+      exportButton.className = refreshButton.className = 'button ghost';
+      reload.title =
+        'Use disk content in the shared session. The previous room version is checkpointed automatically.';
+      keep.title =
+        'Keep shared content. Saving to disk remains a separate action.';
+      actions.replaceChildren(reload, keep);
+      tools.append(exportButton, refreshButton, close);
       function refreshButtons() {
         refreshButton.disabled = busy;
         exportButton.disabled =
@@ -139,7 +152,7 @@ export function showDiskConflict(
           keep.disabled =
             busy || !review;
       }
-      dialog.append(heading, help, view, status, actions);
+      dialog.append(heading, help, view, status, actions, tools);
       container.append(dialog);
       void refresh()
         .catch((error) => {

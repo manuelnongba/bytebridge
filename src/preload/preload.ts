@@ -13,6 +13,8 @@ const api: NativeAPI = {
     ipcRenderer.invoke('project:restore', scope, projectIds),
   readProjectFile: (projectId: string, fileId: string) =>
     ipcRenderer.invoke('project:read', projectId, fileId),
+  checkProjectFile: (projectId, fileId) =>
+    ipcRenderer.invoke('project:check', projectId, fileId),
   inspectProjectFile: (projectId, fileId) =>
     ipcRenderer.invoke('project:inspect', projectId, fileId),
   acceptProjectFile: (projectId, fileId, token) =>

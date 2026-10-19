@@ -395,6 +395,36 @@ export class LocalProject {
     }
   }
 
+  // Monitoring must not replace a baseline or invalidate an open review token.
+  async check(
+    id: string,
+  ): Promise<
+    'changed' | 'unchanged' | 'unavailable' | 'busy' | 'untracked' | 'error'
+  > {
+    if (this.busy.has(id)) return 'busy';
+
+    try {
+      const data = await boundedRead(await this.target(id));
+      const baseline = this.baselines.get(id);
+
+      if (!this.active) return 'unavailable';
+      if (this.busy.has(id)) return 'busy';
+
+      if (!baseline) return 'untracked';
+
+      return baseline.hash !== data.hash ||
+        baseline.dev !== data.stat.dev ||
+        baseline.ino !== data.stat.ino ||
+        baseline.mtimeMs !== data.stat.mtimeMs
+        ? 'changed'
+        : 'unchanged';
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+
+      return code === 'ENOENT' || code === 'ENOTDIR' ? 'unavailable' : 'error';
+    }
+  }
+
   async inspect(id: string) {
     if (this.busy.has(id))
       throw new Error('File operation already in progress.');

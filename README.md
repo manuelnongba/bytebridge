@@ -42,7 +42,7 @@ Each profile keeps its own saved rooms and settings.
 
 Open **Files → Share project…** and choose a folder or subfolder. The host must stay online to load unopened files. Shared edits stay in room buffers until the host saves them to disk. Shared folders reconnect automatically when you return to the same room and profile. Folder locations stay on your device. Use **Locate folder…** if a folder moved or access failed; **Stop hosting** or removing the project forgets its saved access. Projects shared before automatic reconnection was added need one manual reconnect.
 
-If disk contents change externally, ByteBridge opens a **Disk ↔ Room** comparison before saving. Review the versions and use the recovery controls to export or reload as needed. Checkpoints capture loaded shared buffers, not the entire project.
+When loaded files in a project you host change on disk, **Files** shows a change count and review actions. This works with external editors and coding tools such as Codex or Claude Code. Open **Disk ↔ Room** to review each file before bringing its changes into the shared session. New files are not imported automatically, and unavailable files keep their shared content. **Keep disk version** automatically checkpoints the previous shared file under **Problem → History & checkpoints**; exporting a copy is optional. Checkpoints capture loaded shared buffers, not the entire project.
 
 Use **Problem → Edit problem** to describe the issue and add supporting details, then **Save & share problem**. Save checkpoints as you investigate and mark the problem solved when finished.
 
