@@ -40,7 +40,7 @@ Each profile keeps its own saved rooms and settings.
 
 ## Working together
 
-Open **Files → Share project…** and choose a folder or subfolder. The host must stay online to load unopened files. Shared edits stay in room buffers until the host saves them to disk.
+Open **Files → Share project…** and choose a folder or subfolder. The host must stay online to load unopened files. Shared edits stay in room buffers until the host saves them to disk. Shared folders reconnect automatically when you return to the same room and profile. Folder locations stay on your device. Use **Locate folder…** if a folder moved or access failed; **Stop hosting** or removing the project forgets its saved access. Projects shared before automatic reconnection was added need one manual reconnect.
 
 If disk contents change externally, ByteBridge opens a **Disk ↔ Room** comparison before saving. Review the versions and use the recovery controls to export or reload as needed. Checkpoints capture loaded shared buffers, not the entire project.
 
@@ -71,10 +71,15 @@ Generating a catch-up sends shared Problem details, recent history, snippets, an
 | Save to project                      | Command/Ctrl+S       |
 | Add selected code to a Problem draft | Command/Ctrl+Shift+A |
 
+## Server deployment
+
+For Cloudflare hosting, follow the [server deployment guide](cloudflare/README.md). It covers account sign-in, secrets, deployment, and connecting the desktop app.
+
 ## Development
 
 - `npm run watch` — rebuild renderer/preload changes; reload the app manually.
-- `npm run build` — rebuild the full app, including the main process.
+- `npm run build` — rebuild the full app for development.
+- `npm run dist` — build the production app and package it for distribution.
 - `npm run typecheck` — check app TypeScript types.
 - `npm test` — run automated tests.
 - `npm run test:desktop` — exercise Electron collaboration workflows.
