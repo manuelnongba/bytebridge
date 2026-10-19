@@ -3,6 +3,7 @@ node_modules/
 /dist/
 /dist-es/
 /build/
+/release/
 *.tsbuildinfo
 
 # Local room data, including credentials and shared content
@@ -44,3 +45,6 @@ ROADMAP.md
 .dev.vars
 .dev.vars.*
 !.dev.vars.example
+
+# Local desktop release notes
+/RELEASE.md

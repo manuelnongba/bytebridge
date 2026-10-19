@@ -72,6 +72,7 @@ export default [
         patterns: [
           { from: './src/renderer/styles.css', to: 'styles.css' },
           { from: './src/renderer/index.html', to: 'index.html' },
+          { from: './assets/branding/icon.png', to: 'assets/icon.png' },
         ],
       }),
     ],

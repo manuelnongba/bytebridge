@@ -28,6 +28,7 @@ function createWindow() {
   rendererReady = false;
   win = new BrowserWindow({
     title: profile ? `ByteBridge — ${profile}` : 'ByteBridge',
+    icon: path.join(__dirname, '../renderer/assets/icon.png'),
     width: 1200,
     height: 800,
     webPreferences: { preload: path.join(__dirname, '../preload/preload.js') },
