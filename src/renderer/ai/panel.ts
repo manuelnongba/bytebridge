@@ -5,16 +5,20 @@ import type {
   RoomProvider,
   WorkspaceEditor,
 } from '../../shared/contracts.js';
-import { ANALYSIS_SECTIONS, validateAnalysis } from '../../shared/ai.js';
+import {
+  ANALYSIS_SECTIONS,
+  aiErrorMessage,
+  validateAnalysis,
+} from '../../shared/ai.js';
 import type {
   EvidenceItem,
   AIStatus,
   AIResult,
   AnalysisSection,
 } from '../../shared/ai.js';
-import { button, errorMessage, setButtonVariant } from '../ui/dom.js';
+import { button, setButtonVariant } from '../ui/dom.js';
 import { collectEvidence, selectEvidence } from './context.js';
-import { aiRequest } from './client.js';
+import { aiRequest, CatchUpError } from './client.js';
 
 export function initializeAI(
   doc: Y.Doc,
@@ -32,7 +36,7 @@ export function initializeAI(
   disclosure.className = 'panel-help';
   disclosure.id = 'ai-disclosure';
   disclosure.textContent =
-    'Uses shared Problem details, history, snippets, and loaded code via OpenRouter.';
+    'Catch up with an AI summary of your shared session.';
   launch.setAttribute('aria-describedby', disclosure.id);
   parent.append(launch, disclosure);
 
@@ -76,8 +80,7 @@ export function initializeAI(
   const close = button('Close', 'ai-close', () => dialog.close());
   const cancel = button('Cancel request', 'ai-cancel', () => {
     controller?.abort();
-    status.textContent =
-      'Request canceled. Provider usage may already have been incurred.';
+    status.textContent = 'Catch-up canceled.';
   });
   const actions = document.createElement('div');
 
@@ -172,8 +175,8 @@ export function initializeAI(
     sourceList.replaceChildren();
     sources.hidden = true;
     sources.open = false;
-    destination.textContent =
-      'Uses shared session context via OpenRouter and its serving provider.';
+    // destination.textContent =
+    //   'Uses shared session content. Results aren’t saved to room history.';
     status.textContent = 'Preparing your catch-up…';
     controls();
 
@@ -185,16 +188,13 @@ export function initializeAI(
 
       if (!allowed() || requestController.signal.aborted) return;
 
-      if (!configuration.enabled)
-        throw new Error(
-          'AI is disabled on this server. Ask the administrator to configure OpenRouter.',
-        );
+      if (!configuration.enabled) throw new CatchUpError(aiErrorMessage(503));
 
       const all = collectEvidence(doc);
 
       if (!all.length)
-        throw new Error(
-          'Add a Problem, logs, or code before requesting a catch-up.',
+        throw new CatchUpError(
+          'Add a problem description, logs, or code to get started.',
         );
 
       const { evidence, omitted, excerpted } = selectEvidence(all);
@@ -203,8 +203,9 @@ export function initializeAI(
 
       const stamp = Date.now();
 
-      destination.textContent = `OpenRouter · ${configuration.model} · Private to this window.`;
-      sourcesTitle.textContent = `Context used · ${evidence.length} items${excerpted ? ` · ${excerpted} excerpted` : ''}${omitted ? ` · ${omitted} omitted for size` : ''}`;
+      // destination.textContent =
+      //   'Only shown in this window. Not saved to room history.';
+      sourcesTitle.textContent = `Context used · ${evidence.length} items${excerpted ? ` · ${excerpted} shortened` : ''}${omitted ? ` · ${omitted} left out` : ''}`;
 
       for (const item of evidence)
         sourceList.append(
@@ -312,7 +313,7 @@ export function initializeAI(
 
       meta.className = 'panel-help';
       meta.textContent =
-        'AI summary · Suggested causes and next steps need verification.';
+        'AI summaries can make mistakes. Check the sources before acting.';
       output.append(meta);
       stale = JSON.stringify(collectEvidence(doc)) !== sourceSignature;
       hasResult = true;
@@ -322,7 +323,8 @@ export function initializeAI(
         : '';
     } catch (error) {
       if (alive && !requestController.signal.aborted)
-        status.textContent = errorMessage(error);
+        status.textContent =
+          error instanceof CatchUpError ? error.message : aiErrorMessage();
     } finally {
       if (controller === requestController) controller = null;
 

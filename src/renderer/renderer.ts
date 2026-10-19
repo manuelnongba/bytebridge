@@ -805,7 +805,7 @@ const shortcuts = APP_CONFIG.navigation.shortcuts;
 const commands: Command[] = [
   {
     id: 'ai-catch-up',
-    label: 'Catch me up (OpenRouter)',
+    label: 'Catch me up',
     group: 'Problem',
     available: () => !!active && !active.denied && active.provider.synced,
     run: () => active?.disposeAI?.show(),

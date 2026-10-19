@@ -1,4 +1,4 @@
-import { AI_LIMITS } from '../shared/ai.js';
+import { AI_LIMITS, aiErrorMessage } from '../shared/ai.js';
 import { AIError, aiStatus, analyzeRoom } from './ai/service.js';
 import http from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -163,6 +163,8 @@ function revokeConnections() {
 }
 
 const handler = async (req: IncomingMessage, res: ServerResponse) => {
+  let isAIRequest = false;
+
   try {
     if (req.method === 'OPTIONS') return respond(res, 204, null);
 
@@ -174,6 +176,8 @@ const handler = async (req: IncomingMessage, res: ServerResponse) => {
     const aiMatch = url.pathname.match(/^\/rooms\/([a-zA-Z0-9_-]{1,128})\/ai$/);
 
     if (aiMatch) {
+      isAIRequest = true;
+
       const id = aiMatch[1]!;
       const token = String(req.headers.authorization || '').replace(
         /^Bearer /,
@@ -415,8 +419,9 @@ const handler = async (req: IncomingMessage, res: ServerResponse) => {
   } catch (error) {
     if (!res.destroyed)
       respond(res, error instanceof AIError ? error.status : 400, {
-        error:
-          error instanceof AIError
+        error: isAIRequest
+          ? aiErrorMessage(error instanceof AIError ? error.status : 400)
+          : error instanceof AIError
             ? error.message
             : 'Unable to process request.',
       });

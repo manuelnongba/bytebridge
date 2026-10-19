@@ -165,3 +165,29 @@ export function validateAnalysis(
 
   return result;
 }
+
+/** User-facing copy shared by both servers and the desktop client. */
+export function aiErrorMessage(status = 502): string {
+  switch (status) {
+    case 0:
+      return 'Couldn’t connect. Check your connection and try again.';
+    case 400:
+    case 413:
+      return 'We couldn’t use this session’s content. Try a shorter problem description or less code.';
+    case 401:
+    case 403:
+      return 'You no longer have access to this room. Ask for a new invitation.';
+    case 409:
+      return 'Catch-up settings changed. Please try again.';
+    case 429:
+      return 'Catch-up is busy or its usage limit has been reached. Please try again later.';
+    case 499:
+      return 'Catch-up canceled.';
+    case 503:
+      return 'Catch-up isn’t available right now. Please try again later.';
+    case 504:
+      return 'Your catch-up took too long. Please try again.';
+    default:
+      return 'We couldn’t create your catch-up. Please try again.';
+  }
+}

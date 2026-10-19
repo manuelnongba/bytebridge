@@ -1,6 +1,7 @@
-import { validateEvidence } from '../../shared/ai.js';
+import { aiErrorMessage, validateEvidence } from '../../shared/ai.js';
 import type { AIStatus } from '../../shared/ai.js';
 import { openRouterProvider } from './providers/openrouter.js';
+import { reportAIFailure } from './diagnostics.js';
 
 export class AIError extends Error {
   constructor(
@@ -104,6 +105,8 @@ export async function analyzeRoom(
   try {
     return await provider.analyze(evidence, AbortSignal.any([signal, timeout]));
   } catch (error) {
+    reportAIFailure(error, signal.aborted || timeout.aborted);
+
     if (signal.aborted) throw new AIError(499, 'AI request canceled.');
 
     if (timeout.aborted)
@@ -112,13 +115,7 @@ export async function analyzeRoom(
         'The AI request timed out. Try again with less context.',
       );
 
-    // Only expose known application messages; parsing/network exceptions can carry upstream details.
-    const message =
-      error instanceof Error && /^(OpenRouter |The AI )/.test(error.message)
-        ? error.message
-        : 'The AI provider returned an invalid response. Try again later.';
-
-    throw new AIError(502, message);
+    throw new AIError(502, aiErrorMessage(502));
   } finally {
     active.delete(roomId);
   }
