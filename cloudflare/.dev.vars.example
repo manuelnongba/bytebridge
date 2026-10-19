@@ -1,0 +1,4 @@
+# Copy to cloudflare/.dev.vars for local development only.
+ROOM_CREATION_KEY=choose-a-local-room-creation-key
+# Required for AI catch-up; set AI_ENABLED to "0" in wrangler.jsonc to disable AI.
+OPENROUTER_API_KEY=

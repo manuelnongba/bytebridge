@@ -38,12 +38,18 @@
     "test:profiles": "npm run build && node scripts/check-profiles.mjs",
     "test:desktop": "npm run build && electron scripts/check-desktop.mjs && electron scripts/check-desktop.mjs --cold-invite",
     "server": "npm run build:server && node --env-file=.env scripts/server.mjs",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build:release && electron-builder",
+    "cloudflare:dev": "wrangler dev --config cloudflare/wrangler.jsonc",
+    "cloudflare:typecheck": "tsc -p cloudflare/tsconfig.json",
+    "cloudflare:build": "wrangler deploy --dry-run --config cloudflare/wrangler.jsonc --outdir ../dist/cloudflare",
+    "cloudflare:deploy": "wrangler deploy --config cloudflare/wrangler.jsonc",
+    "build:release": "npm run build:types && webpack --mode production --config webpack.config.js && npm run build:main"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261019.1",
     "@types/node": "^24.5.2",
     "@types/ws": "^8.18.2",
     "copy-webpack-plugin": "^13.0.1",
@@ -55,15 +61,18 @@
     "ts-loader": "^9.5.4",
     "typescript": "^5.9.2",
     "webpack": "^5.101.3",
-    "webpack-cli": "^6.0.1"
+    "webpack-cli": "^6.0.1",
+    "wrangler": "^4.151.2"
   },
   "type": "module",
   "dependencies": {
     "@y/websocket-server": "^0.1.1",
     "ignore": "^7.0.12",
+    "lib0": "^0.2.119",
     "monaco-editor": "^0.53.0",
     "ws": "^8.22.0",
     "y-monaco": "^0.1.6",
+    "y-protocols": "^1.0.7",
     "y-websocket": "^3.0.0",
     "yjs": "^13.6.27"
   }

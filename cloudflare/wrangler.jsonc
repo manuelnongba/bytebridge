@@ -1,0 +1,22 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "bytebridge-server",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROOMS", "class_name": "Room" },
+      { "name": "AI_LIMITER", "class_name": "AILimiter" },
+    ],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room", "AILimiter"] }],
+  "vars": {
+    "AI_ENABLED": "1",
+    "OPENROUTER_MODEL": "google/gemini-2.5-flash-lite",
+    "AI_ROOM_REQUESTS_PER_HOUR": "20",
+    "AI_REQUESTS_PER_HOUR": "100",
+  },
+}

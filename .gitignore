@@ -38,3 +38,9 @@ Thumbs.db
 .prettierrc.json
 docs
 ROADMAP.md
+
+# Cloudflare local state and secrets
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
