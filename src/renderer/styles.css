@@ -294,8 +294,7 @@
   margin: 12px 0;
 }
 #debug-context textarea,
-#debug-context input,
-#debug-context select {
+#debug-context input {
   display: block;
   width: 100%;
   margin-top: 6px;
@@ -532,12 +531,8 @@ select {
 }
 .language-selector {
   max-width: 180px;
-  background: var(--control-surface);
-  border: 1px solid var(--control-border);
-  border-radius: 5px;
-  color: var(--text);
-  padding: 5px 8px;
 }
+
 #editor {
   flex: 1;
   min-height: 0;
@@ -643,7 +638,6 @@ select {
 .modal-content input::placeholder {
   color: var(--muted);
 }
-.modal-content select,
 .modal-content textarea {
   width: 100%;
   padding: 10px;
@@ -918,35 +912,13 @@ dialog::backdrop {
 .modal-content #session-filter {
   width: auto;
   max-width: 50%;
-  padding: 5px 8px;
   font-size: var(--type-small);
-  color: var(--muted);
 }
 .session-picker {
   position: relative;
 }
 #session-picker-trigger {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-sm);
   width: 100%;
-  padding: var(--space-md);
-  color: var(--text);
-  background: var(--input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  text-align: left;
-  cursor: pointer;
-}
-#session-picker-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-#session-picker-trigger[aria-expanded='true'] {
-  border-color: var(--accent);
 }
 .session-picker-popup {
   position: absolute;
@@ -954,47 +926,34 @@ dialog::backdrop {
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  padding: var(--space-sm);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 12px 30px var(--shadow-color);
+  display: flex;
 }
-#session-options {
-  max-height: min(220px, 30vh);
-  overflow-y: auto;
-  margin-top: var(--space-sm);
-}
-.session-option {
+.searchable-option {
   padding: var(--space-sm);
   border-radius: var(--radius-sm);
   cursor: pointer;
   overflow-wrap: anywhere;
   border: 1px solid transparent;
 }
-.session-option strong,
-.session-option small {
+.searchable-option strong,
+.searchable-option small {
   display: block;
 }
-.session-option strong {
+.searchable-option strong {
   font-weight: 500;
 }
-.session-option small {
+.searchable-option small {
   margin-top: 4px;
   color: var(--muted);
   line-height: 1.5;
 }
-.session-option.highlighted,
-.session-option:hover {
+.searchable-option.highlighted,
+.searchable-option:hover {
   background: var(--hover);
   border-color: var(--accent);
 }
-.session-option[aria-selected='true'] strong {
+.searchable-option[aria-selected='true'] strong {
   color: var(--accent);
-}
-.session-picker-popup #session-count {
-  margin: var(--space-sm) 4px 0;
-  font-size: var(--type-small);
 }
 .editor-actions {
   display: flex;
@@ -1125,12 +1084,6 @@ dialog::backdrop {
   width: 100%;
   min-height: 38px;
   margin: 0;
-  padding: var(--space-sm) var(--space-md);
-  color: var(--text);
-  background: var(--input);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
 }
 .checkpoint-file-toolbar small {
   color: var(--muted);
@@ -1345,4 +1298,145 @@ details[open] > .project-heading::before {
   color: var(--accent);
   font-size: var(--type-small);
   font-weight: 600;
+}
+
+/* All dropdown controls share the same appearance, including native selects. */
+select,
+.dropdown-trigger {
+  appearance: none;
+  min-width: 0;
+  padding: var(--control-y) 34px var(--control-y) var(--control-x);
+  color: var(--text);
+  background-color: var(--input);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%23aebcbd' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: var(--type-label);
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+select:hover:not(:disabled),
+.dropdown-trigger:hover:not(:disabled) {
+  border-color: var(--button-border-hover);
+}
+select:focus-visible,
+.dropdown-trigger:focus-visible,
+.dropdown-trigger[aria-expanded='true'],
+.dropdown-popup .dropdown-search:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+select:disabled,
+.dropdown-trigger:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+select option {
+  color: var(--text);
+  background: var(--surface);
+}
+.modal-content select,
+#debug-context select {
+  display: block;
+  width: 100%;
+}
+#debug-context select {
+  margin-top: 6px;
+}
+.dropdown-trigger {
+  display: flex;
+  align-items: center;
+}
+.dropdown-trigger > [aria-hidden='true'] {
+  display: none;
+}
+.dropdown-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dropdown-popup {
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 30px var(--shadow-color);
+  overflow: hidden;
+  font-family: var(--font-ui);
+  font-size: var(--type-label);
+}
+.dropdown-popup .dropdown-search,
+#debug-context .dropdown-search {
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-sm);
+  flex-shrink: 0;
+  color: var(--text);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  line-height: 1.4;
+}
+.dropdown-search::placeholder {
+  color: var(--muted);
+}
+.dropdown-options {
+  overflow-y: auto;
+  min-height: 0;
+  max-height: min(220px, 30vh);
+}
+.dropdown-popup .dropdown-count {
+  margin: 0 4px;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: var(--type-small);
+  line-height: 1.5;
+}
+/* Native values are retained; all visible menus use the shared option list. */
+.dropdown-control {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+}
+.dropdown-control > .dropdown-trigger {
+  width: 100%;
+}
+.modal-content .dropdown-control,
+#debug-context .dropdown-control {
+  display: block;
+  width: 100%;
+}
+.modal-content .session-picker-heading .dropdown-control {
+  width: auto;
+  max-width: 50%;
+}
+.dropdown-control.language-selector {
+  min-width: 110px;
+}
+.dropdown-control.language-selector > .dropdown-trigger {
+  margin: 0;
+}
+.dropdown-floating {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+}
+.dropdown-floating:popover-open {
+  display: flex;
+}
+.searchable-option[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
 }

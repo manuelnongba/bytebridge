@@ -1,3 +1,4 @@
+import { initializeDropdown } from '../ui/dropdown.js';
 import type * as Y from 'yjs';
 import type {
   FileSnapshot,
@@ -285,6 +286,10 @@ export function initializeHistory(
   root.append(actions, solveForm, solvedNote, status, history);
   panel.append(root);
 
+  const checkpointPickers = [before, after].map((select) =>
+    initializeDropdown(select),
+  );
+
   function render() {
     const state = resolutionState(records.toArray());
 
@@ -323,6 +328,8 @@ export function initializeHistory(
 
     if (checkpoints.length >= 2 && before.value === after.value)
       after.value = checkpoints.at(-1)!.id;
+
+    for (const picker of checkpointPickers) picker.refresh();
 
     compare.disabled = checkpoints.length < 2;
     historyList.replaceChildren();
@@ -403,6 +410,8 @@ export function initializeHistory(
 
   const dispose = () => {
     alive = false;
+
+    for (const picker of checkpointPickers) picker.dispose();
     records.unobserve(render);
     events.unobserve(render);
     context.unobserve(render);

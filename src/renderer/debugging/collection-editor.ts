@@ -1,3 +1,4 @@
+import { initializeDropdown } from '../ui/dropdown.js';
 import type {
   CollectionSchema,
   DebugConfig,
@@ -23,6 +24,10 @@ export function collectionEditor(
   legend.textContent = schema.label;
 
   const rows = document.createElement('div');
+  const dropdowns = new Map<
+    HTMLElement,
+    ReturnType<typeof initializeDropdown>[]
+  >();
   let epoch = 0;
   let disabled = false;
   let pending = false;
@@ -48,6 +53,10 @@ export function collectionEditor(
 
     row.className = 'context-entry';
 
+    const pickers: ReturnType<typeof initializeDropdown>[] = [];
+
+    dropdowns.set(row, pickers);
+
     for (const field of schema.fields) {
       const label = document.createElement('label');
 
@@ -71,6 +80,28 @@ export function collectionEditor(
       input.value = entry[field.key] || field.options?.[0] || '';
       label.append(input);
       row.append(label);
+
+      if (input instanceof HTMLSelectElement) {
+        if (field.key === 'language') {
+          for (const option of input.options) {
+            const definition = config.languages.find(
+              (item) => item.id === option.value,
+            );
+
+            option.dataset.search = [
+              option.value,
+              ...(definition?.extensions || []),
+            ].join(' ');
+          }
+        }
+
+        pickers.push(
+          initializeDropdown(input, {
+            searchable: field.key === 'language',
+            name: field.label,
+          }),
+        );
+      }
     }
 
     if (schema.fileImport) {
@@ -93,6 +124,8 @@ export function collectionEditor(
       filename.addEventListener('input', () => {
         if (!manualLanguage)
           language.value = detectLanguage(filename.value, config.languages);
+
+        for (const picker of pickers) picker.refresh();
       });
     }
 
@@ -102,6 +135,9 @@ export function collectionEditor(
     remove.className = 'button danger';
     remove.textContent = 'Remove entry';
     remove.onclick = () => {
+      for (const picker of pickers) picker.dispose();
+
+      dropdowns.delete(row);
       row.remove();
       changed();
     };
@@ -176,6 +212,10 @@ export function collectionEditor(
     load(entries: ContextEntry[]) {
       epoch++;
       pending = false;
+      for (const pickers of dropdowns.values())
+        for (const picker of pickers) picker.dispose();
+
+      dropdowns.clear();
       rows.replaceChildren();
 
       for (const entry of entries) append(entry);
@@ -184,12 +224,19 @@ export function collectionEditor(
       disabled = value;
       root.disabled = value;
 
+      for (const pickers of dropdowns.values())
+        for (const picker of pickers) picker.refresh();
+
       if (value) {
         epoch++;
         pending = false;
       }
     },
     dispose() {
+      for (const pickers of dropdowns.values())
+        for (const picker of pickers) picker.dispose();
+
+      dropdowns.clear();
       epoch++;
       pending = false;
     },

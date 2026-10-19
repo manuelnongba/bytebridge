@@ -1,3 +1,4 @@
+import { initializeDropdown } from '../ui/dropdown.js';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import type { InvestigationEvent } from '../../shared/contracts.js';
 import { checkpointFiles } from '../workspace/data.js';
@@ -44,6 +45,8 @@ export function showCheckpointDiff(
   view.className = 'checkpoint-file-diff';
   container.replaceChildren(toolbar, view);
 
+  const dropdown = initializeDropdown(picker);
+
   let dispose = () => {};
 
   const render = () => {
@@ -63,6 +66,7 @@ export function showCheckpointDiff(
   render();
 
   return () => {
+    dropdown.dispose();
     dispose();
     container.replaceChildren();
   };

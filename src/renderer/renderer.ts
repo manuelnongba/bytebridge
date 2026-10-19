@@ -1,3 +1,4 @@
+import { initializeDropdown } from './ui/dropdown.js';
 import { initializeAI } from './ai/panel.js';
 import {
   openCheckpointFile,
@@ -140,6 +141,10 @@ for (const { hours, label } of APP_CONFIG.invitations.durations) {
   $('invite-hours').append(option);
 }
 
+const roomDropdowns = ['room-mode', 'session-filter', 'invite-hours'].map(
+  (id) => initializeDropdown(element<HTMLSelectElement>(id)),
+);
+
 function renderSaved() {
   const selected = $('saved-room').value;
 
@@ -262,6 +267,8 @@ function showJoin(mode: string) {
   $('room-mode').value = mode;
   $('session-search').value = '';
   $('session-filter').value = 'active';
+
+  for (const picker of roomDropdowns) picker.refresh();
   fields();
   renderSaved();
   $('name-modal').style.display = 'flex';
@@ -269,6 +276,8 @@ function showJoin(mode: string) {
 }
 
 function hideJoin() {
+  for (const picker of roomDropdowns) picker.close();
+
   sessionPicker.close();
   $('workspace').inert = false;
   $('name-modal').style.display = 'none';
