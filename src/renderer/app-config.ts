@@ -42,7 +42,7 @@ export const APP_CONFIG = {
       focus: '#b5e8cb',
     },
   },
-  defaultServer: 'http://localhost:1234',
+  defaultServer: 'https://bytebridge-server.eanongba19.workers.dev',
   requestTimeoutMs: 8000,
   accessCheckIntervalMs: 15000,
   workspace: {
