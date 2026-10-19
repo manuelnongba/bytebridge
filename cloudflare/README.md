@@ -39,9 +39,3 @@ npm run cloudflare:dev
 ```
 
 Use the localhost URL printed by Wrangler. Local rooms are separate from deployed rooms; existing Node-server rooms are not migrated automatically.
-
-## What to commit
-
-Commit the source, configuration, and `.dev.vars.example`. Keep real secrets in Cloudflare or the Git-ignored `.dev.vars`; never commit `.wrangler/` local data.
-
-For AI failures, check Cloudflare logs for `ai_request_failed`. Monitor Cloudflare usage and set a spending limit for the AI provider.
