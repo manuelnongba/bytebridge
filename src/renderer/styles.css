@@ -1724,3 +1724,117 @@ details[open] > .folder-heading::before {
   color: var(--muted);
   font-size: var(--type-small);
 }
+
+.files-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+}
+.files-project-actions,
+.files-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.files-project-actions #open-project {
+  flex: 1;
+}
+.files-project-actions #stop-hosting {
+  background: transparent;
+  color: var(--danger-accent);
+  border-color: transparent;
+  padding-inline: 8px;
+}
+.files-project-actions #stop-hosting:hover:not(:disabled) {
+  border-color: var(--danger-border);
+  background: var(--control-surface);
+}
+.files-current-actions {
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--control-border);
+}
+.files-action-scope {
+  display: block;
+  margin-bottom: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--type-small);
+}
+.files-action-buttons #save-project-file {
+  flex: 1;
+}
+.files-actions .button {
+  min-height: 34px;
+  font-size: var(--type-label);
+}
+
+#files-panel > h2 {
+  margin-bottom: 6px;
+}
+#files-panel > .files-help {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  align-items: start;
+  width: fit-content;
+  max-width: 100%;
+  column-gap: 4px;
+  margin: 2px 0 4px;
+  line-height: 24px;
+}
+#files-panel > .files-help > span {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+#files-panel .files-help > .files-info-button {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+  line-height: 1;
+  border-radius: 50%;
+}
+.files-info-button svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+.files-info-button[aria-expanded='true'] {
+  color: var(--accent);
+  background: var(--selected-surface);
+}
+.files-info-popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(310px, calc(100vw - 16px));
+  box-sizing: border-box;
+  padding: 14px 16px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px var(--shadow-color);
+  font-size: var(--type-label);
+  line-height: 1.6;
+}
+.files-info-popover ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+.files-info-popover li + li {
+  margin-top: 4px;
+}

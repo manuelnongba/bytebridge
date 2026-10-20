@@ -81,11 +81,68 @@ export function initializeWorkspace(
   close.className = 'close-control';
   close.setAttribute('aria-label', 'Close files');
 
-  const help = document.createElement('p');
+  const help = document.createElement('div');
+  const summary = document.createElement('span');
+  const info = button('ⓘ', 'files-info', () => {});
+  const details = document.createElement('div');
+  const detailsHeading = document.createElement('strong');
+  const detailsList = document.createElement('ul');
 
-  help.className = 'panel-help';
-  help.textContent =
-    'Share a project or subfolder once. File contents load when opened; tabs are personal and edits are shared. Only the host can save to the originals. Loaded contents remain in room storage and checkpoints.';
+  help.className = 'panel-help files-help';
+  summary.textContent = 'Share a folder to edit files together.';
+  info.className = 'button ghost files-info-button';
+  info.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>';
+  info.setAttribute('aria-label', 'About sharing files');
+  info.setAttribute('aria-expanded', 'false');
+  info.setAttribute('aria-controls', 'files-sharing-info');
+  details.id = 'files-sharing-info';
+  details.className = 'files-info-popover';
+  details.popover = 'auto';
+  details.setAttribute('role', 'note');
+  details.setAttribute('aria-labelledby', 'files-info-heading');
+  detailsHeading.id = 'files-info-heading';
+  detailsHeading.textContent = 'Sharing files';
+
+  for (const text of [
+    'Files load when opened.',
+    'Tabs are personal; edits are shared.',
+    'Only the host can save to the original files.',
+    'Loaded content stays in room storage and checkpoints.',
+  ]) {
+    const item = document.createElement('li');
+
+    item.textContent = text;
+    detailsList.append(item);
+  }
+
+  details.append(detailsHeading, detailsList);
+  help.append(summary, info);
+
+  const hideInfo = () => details.hidePopover();
+
+  info.onclick = () => {
+    if (details.matches(':popover-open')) {
+      hideInfo();
+      return;
+    }
+
+    details.showPopover();
+
+    const anchor = info.getBoundingClientRect();
+    const popup = details.getBoundingClientRect();
+
+    details.style.left = `${Math.max(8, Math.min(anchor.left, window.innerWidth - popup.width - 8))}px`;
+    details.style.top = `${Math.max(8, Math.min(anchor.bottom + 8, window.innerHeight - popup.height - 8))}px`;
+  };
+  details.addEventListener('toggle', () => {
+    info.setAttribute(
+      'aria-expanded',
+      String(details.matches(':popover-open')),
+    );
+  });
+  panel.addEventListener('panel-closed', hideInfo);
+  window.addEventListener('resize', hideInfo);
 
   const status = document.createElement('p');
 
@@ -307,15 +364,40 @@ export function initializeWorkspace(
   );
   const actions = document.createElement('div');
 
-  actions.className = 'workspace-actions';
+  const projectActions = document.createElement('div');
+  const fileActions = document.createElement('div');
+  const fileScope = document.createElement('span');
+  const fileButtons = document.createElement('div');
+
+  actions.className = 'files-actions';
+  projectActions.className = 'files-project-actions';
+  projectActions.setAttribute('role', 'group');
+  projectActions.setAttribute('aria-label', 'Project sharing');
+  fileActions.className = 'files-current-actions';
+  fileActions.setAttribute('role', 'group');
+  fileActions.setAttribute('aria-label', 'Current file actions');
+  fileScope.className = 'files-action-scope';
+  fileButtons.className = 'files-action-buttons';
+  pick.title = 'Choose a local folder to share with this room';
+  stop.title =
+    'Stop hosting all your projects in this room and disable automatic reconnection';
+  save.title = 'Write the current shared file to its original location on disk';
+  copy.title =
+    'Save a separate copy of the current file to a location you choose';
+  copy.textContent = 'Save copy…';
   conflict.hidden = true;
   setButtonVariant(save, 'primary');
-  setButtonVariant(stop, 'ghost');
-  actions.append(pick, stop, save, copy);
+  setButtonVariant(stop, 'danger');
+  setButtonVariant(copy, 'secondary');
+  projectActions.append(pick, stop);
+  fileButtons.append(save, copy);
+  fileActions.append(fileScope, fileButtons);
+  actions.append(projectActions, fileActions);
   panel.replaceChildren(
     close,
     heading,
     help,
+    details,
     actions,
     status,
     diskNotice,
@@ -443,6 +525,10 @@ export function initializeWorkspace(
     save.hidden = !hosting.local.has(current.projectId || '');
     save.disabled = denied || saving || !current.text || editor.isReviewing();
     copy.disabled = editor.isReviewing();
+    fileScope.textContent = editor.isReviewing()
+      ? 'File actions unavailable during review'
+      : `Current file · ${current.path}`;
+    fileScope.title = fileScope.textContent;
     conflict.hidden = true;
     conflict.disabled = denied || saving || !current.text;
 
@@ -836,7 +922,13 @@ export function initializeWorkspace(
     if (togglePanel(panel.id)) close.focus();
   };
   panel.onkeydown = (event) => {
-    if (event.key === 'Escape') close.click();
+    if (event.key !== 'Escape') return;
+
+    if (details.matches(':popover-open')) {
+      event.preventDefault();
+      hideInfo();
+      info.focus();
+    } else close.click();
   };
   async function restoreHosting() {
     loading = true;
@@ -880,8 +972,7 @@ export function initializeWorkspace(
         status.textContent =
           'Some folders could not reconnect. Use Locate folder… beside the project to select its current location.';
       else if (result.manifests.length)
-        status.textContent =
-          'Your shared folders reconnected. Shared edits are preserved; saving still checks for disk changes.';
+        status.textContent = 'Shared folders reconnected.';
 
       const pending = workspaceFiles(doc).find(
         (file) =>
@@ -946,6 +1037,9 @@ export function initializeWorkspace(
     document.removeEventListener('visibilitychange', checkDisk);
     element('editor-panel').removeEventListener('review-change', render);
     closeConflict();
+    hideInfo();
+    panel.removeEventListener('panel-closed', hideInfo);
+    window.removeEventListener('resize', hideInfo);
     alive = false;
     provider.off('sync', restore);
     terminal?.dispose();
