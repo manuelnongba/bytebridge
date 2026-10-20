@@ -1163,14 +1163,14 @@ dialog::backdrop {
   display: none;
 }
 .project-heading::before {
-  content: '▸';
+  content: '›';
   grid-column: 1;
   grid-row: 1;
   color: var(--muted);
   text-align: center;
 }
 details[open] > .project-heading::before {
-  content: '▾';
+  content: '⌄';
 }
 .project-heading > span {
   grid-column: 2;
@@ -1553,6 +1553,135 @@ select option {
   background: var(--selected-surface);
 }
 .disk-diff-legend {
+  color: var(--muted);
+  font-size: var(--type-small);
+}
+
+.file-filter {
+  width: 100%;
+  margin: var(--space-sm) 0;
+  padding: 9px 10px;
+  color: var(--text);
+  background: var(--input);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-sm);
+}
+.file-tree-tools {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: var(--type-small);
+  margin-bottom: 8px;
+}
+.file-tree-tools .button {
+  padding: 4px 6px;
+  font-size: inherit;
+}
+#file-tree {
+  padding-bottom: 12px;
+}
+#file-tree details {
+  margin-left: 14px;
+  padding-left: 6px;
+  border-left: 1px solid var(--control-border);
+}
+#file-tree > details {
+  margin: 6px 0 12px;
+  padding: 0;
+  border: 0;
+}
+#file-tree .folder-heading {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  list-style: none;
+  color: var(--text);
+}
+.folder-heading::-webkit-details-marker {
+  display: none;
+}
+.folder-heading::before {
+  content: '›';
+  color: var(--muted);
+}
+details[open] > .folder-heading::before {
+  content: '⌄';
+}
+#file-tree .folder-heading:hover {
+  background: var(--hover);
+}
+#file-tree .project-heading {
+  background: var(--control-surface);
+  font-weight: 600;
+}
+.folder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#file-tree .file-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 33px;
+  padding: 5px 8px 5px 20px;
+  border-left: 2px solid transparent;
+  color: var(--text);
+}
+.file-select::before {
+  content: '◧';
+  color: var(--muted);
+  font-size: 12px;
+}
+.file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-state {
+  margin-left: auto;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--type-small);
+}
+#file-tree .file-select[aria-pressed='true'] {
+  border-left-color: var(--accent);
+  background: var(--selected-surface);
+  color: var(--accent);
+}
+#file-tree summary:focus-visible,
+#file-tree button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.file-presence:empty {
+  display: none;
+}
+.file-presence {
+  padding-left: 30px;
+  font-size: var(--type-small);
+}
+
+.file-code-match {
+  display: block;
+  margin: 0 8px 6px 30px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-family: var(--font-code);
+  font-size: var(--type-small);
+}
+.file-search-scope {
+  margin: 0 0 6px;
   color: var(--muted);
   font-size: var(--type-small);
 }

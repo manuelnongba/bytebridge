@@ -104,10 +104,35 @@ export function initializeWorkspace(
   diskCheckStatus.setAttribute('role', 'status');
   diskCheckStatus.hidden = true;
 
+  let revealedFile = '';
   const tree = document.createElement('nav');
 
   tree.id = 'file-tree';
   tree.setAttribute('aria-label', 'Room files');
+
+  const filter = document.createElement('input');
+  const treeTools = document.createElement('div');
+  const searchScope = document.createElement('p');
+
+  searchScope.className = 'file-search-scope';
+  searchScope.textContent = 'Code search includes loaded files only.';
+  const count = document.createElement('span');
+  const collapse = button('Collapse folders', null, () => {
+    tree.querySelectorAll('details').forEach((folder) => {
+      folder.open = false;
+    });
+    expanded.clear();
+  });
+
+  filter.type = 'search';
+  filter.placeholder = 'Search files, paths, or code…';
+  filter.setAttribute('aria-label', 'Search filenames, paths, and loaded code');
+  filter.className = 'file-filter';
+  filter.oninput = () => render();
+  treeTools.className = 'file-tree-tools';
+  count.setAttribute('role', 'status');
+  collapse.className = 'button ghost';
+  treeTools.append(count, collapse);
 
   async function connectProject(expectedProjectId?: string) {
     if (!alive || denied || loading || saving || !provider.synced) return;
@@ -295,6 +320,9 @@ export function initializeWorkspace(
     status,
     diskNotice,
     diskCheckStatus,
+    filter,
+    searchScope,
+    treeTools,
     tree,
     conflict,
   );
@@ -481,7 +509,34 @@ export function initializeWorkspace(
       }
     }
 
+    const query = filter.value.trim().toLowerCase();
+    const codeMatches = new Map<string, { line: number; preview: string }>();
+
+    if (query) {
+      for (const file of files) {
+        if (!file.text) continue;
+
+        const code = file.text.toString();
+        const index = code.toLowerCase().indexOf(query);
+
+        if (index < 0) continue;
+
+        const lineStart = code.lastIndexOf('\n', index - 1) + 1;
+        const lineEnd = code.indexOf('\n', index);
+        const start = Math.max(lineStart, index - 50);
+
+        codeMatches.set(file.id, {
+          line: code.slice(0, index).split('\n').length,
+          preview: `${start > lineStart ? '…' : ''}${code.slice(start, Math.min(lineEnd < 0 ? code.length : lineEnd, start + 180)).trim()}`,
+        });
+      }
+    }
+
+    searchScope.hidden = !query;
+
     const signature = JSON.stringify({
+      codeMatches: [...codeMatches],
+      filter: filter.value,
       currentId,
       reviewing: editor.isReviewing(),
       dirty: !!hosting.isDirty(current),
@@ -552,15 +607,58 @@ export function initializeWorkspace(
       tabs.append(tab);
     }
 
-    tree.querySelectorAll('details').forEach((el) => {
-      if (el.open) expanded.add(el.dataset.path);
-      else expanded.delete(el.dataset.path);
-    });
+    if (!tree.dataset.filtered)
+      tree.querySelectorAll('details').forEach((el) => {
+        if (el.open) expanded.add(el.dataset.path);
+        else expanded.delete(el.dataset.path);
+      });
     tree.replaceChildren();
+    tree.dataset.filtered = filter.value.trim() ? 'true' : '';
 
     const folders = new Map<string, HTMLElement>([['', tree]]);
 
-    for (const file of files) {
+    const visibleFiles = files
+      .filter(
+        (file) =>
+          `${file.projectName || ''}/${file.path}`
+            .toLowerCase()
+            .includes(query) || codeMatches.has(file.id),
+      )
+      .sort((a, b) => {
+        const projectOrder = (a.projectName || '').localeCompare(
+          b.projectName || '',
+          undefined,
+          { numeric: true },
+        );
+        if (projectOrder) return projectOrder;
+
+        const left = a.path.split('/');
+        const right = b.path.split('/');
+        for (let i = 0; i < Math.min(left.length, right.length); i++) {
+          const leftFolder = i < left.length - 1;
+          const rightFolder = i < right.length - 1;
+          if (leftFolder !== rightFolder) return leftFolder ? -1 : 1;
+          const order = left[i]!.localeCompare(right[i]!, undefined, {
+            numeric: true,
+          });
+          if (order) return order;
+        }
+        return left.length - right.length;
+      });
+
+    count.textContent = query
+      ? `${visibleFiles.length} of ${files.length} files`
+      : `${files.length} files`;
+    collapse.disabled = !!query;
+
+    if (!visibleFiles.length) {
+      const empty = document.createElement('p');
+      empty.className = 'panel-help';
+      empty.textContent = 'No matches in filenames, paths, or loaded code.';
+      tree.append(empty);
+    }
+
+    for (const file of visibleFiles) {
       const parts = file.path.split('/');
       let parent = '',
         container: HTMLElement = tree;
@@ -582,13 +680,18 @@ export function initializeWorkspace(
 
           folder.dataset.path = folderPath;
           folder.open =
-            expanded.has(folderPath) || !knownFolders.has(folderPath);
+            !!query ||
+            expanded.has(folderPath) ||
+            (key === file.projectId && !knownFolders.has(folderPath));
           knownFolders.add(folderPath);
 
           const label = document.createElement('summary');
 
           const folderName = document.createElement('span');
           folderName.textContent = name;
+          folderName.className = 'folder-name';
+          label.title = name;
+          label.classList.add('folder-heading');
           label.append(folderName);
           if (key === file.projectId) {
             label.classList.add('project-heading');
@@ -661,14 +764,26 @@ export function initializeWorkspace(
       row.dataset.path = file.path;
       row.dataset.loaded = String(!!file.text);
 
-      const select = button(
-        `${parts.at(-1)}${!file.text ? ' · not loaded' : file.mode === 'reference' ? ' · reference' : ''}`,
-        null,
-        () => open(file.id),
+      const select = button(parts.at(-1) || file.path, null, () =>
+        open(file.id),
       );
 
       select.setAttribute('aria-pressed', String(file.id === currentId));
-      select.title = file.path;
+      select.title = `${file.path}${!file.text ? ' · Opens on demand' : ''}`;
+      select.classList.add('file-select');
+
+      const name = document.createElement('span');
+      name.className = 'file-name';
+      name.textContent = parts.at(-1) || file.path;
+      select.replaceChildren(name);
+
+      if (file.mode === 'reference' || !file.text) {
+        const badge = document.createElement('span');
+        badge.className = 'file-state';
+        badge.textContent =
+          file.mode === 'reference' ? 'Read-only' : 'On demand';
+        select.append(badge);
+      }
 
       const presence = document.createElement('small');
 
@@ -685,9 +800,36 @@ export function initializeWorkspace(
             `${String(state.user?.name || 'Teammate').slice(0, 60)} ${state.editing ? 'editing' : 'viewing'}`,
         )
         .join(', ');
-      row.append(select, presence);
+      row.append(select);
+
+      const match = codeMatches.get(file.id);
+
+      if (match) {
+        const preview = document.createElement('small');
+
+        preview.className = 'file-code-match';
+        preview.textContent = `Line ${match.line}: ${match.preview}`;
+        preview.title = preview.textContent;
+        row.append(preview);
+      }
+
+      row.append(presence);
       container.append(row);
+
+      if (!query && file.id === currentId && revealedFile !== currentId) {
+        let ancestor = row.parentElement;
+
+        while (ancestor && ancestor !== tree) {
+          if (ancestor instanceof HTMLDetailsElement) {
+            ancestor.open = true;
+            expanded.add(ancestor.dataset.path);
+          }
+          ancestor = ancestor.parentElement;
+        }
+      }
     }
+
+    revealedFile = currentId;
   }
 
   toggle.onclick = () => {
