@@ -17,6 +17,19 @@ export interface ProjectManifest {
   truncated: boolean;
 }
 
+export type MenuCommand =
+  | 'create-room'
+  | 'join-room'
+  | 'saved-sessions'
+  | 'files'
+  | 'share'
+  | 'save'
+  | 'copy'
+  | 'commands'
+  | 'file-panel'
+  | 'problem'
+  | 'terminal';
+
 export interface NativeAPI {
   startTerminal(input: TerminalStart): Promise<void>;
   stopTerminal(id: string): Promise<void>;
@@ -70,6 +83,7 @@ export interface NativeAPI {
   saveMarkdown(content: string): Promise<{ canceled: boolean }>;
   copyToClipboard(text: string): Promise<boolean>;
   onCreateRoom(callback: () => void): void;
+  onMenuCommand(callback: (command: MenuCommand) => void): () => void;
   onDeepLink(callback: (url: string) => void): void;
 }
 

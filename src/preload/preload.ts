@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { TerminalEvent } from '../shared/terminal.js';
-import type { NativeAPI } from '../shared/contracts.js';
+import type { MenuCommand, NativeAPI } from '../shared/contracts.js';
 
 const api: NativeAPI = {
   startTerminal: (input) => ipcRenderer.invoke('terminal:start', input),
@@ -48,6 +48,16 @@ const api: NativeAPI = {
 
   onCreateRoom: (callback: () => void) =>
     ipcRenderer.on('menu:create-room', callback),
+
+  onMenuCommand: (callback) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      command: MenuCommand,
+    ) => callback(command);
+
+    ipcRenderer.on('menu:command', listener);
+    return () => ipcRenderer.removeListener('menu:command', listener);
+  },
 
   onDeepLink: (callback: (url: string) => void) =>
     ipcRenderer.on('deeplink', (_, url) => callback(url)),

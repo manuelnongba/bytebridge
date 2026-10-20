@@ -10,7 +10,7 @@ import { mkdirSync } from 'node:fs';
 import { profileFrom, profileDirectory } from './profiles.js';
 import { LocalProject } from './project-files.js';
 import { projectAccess } from './project-access.js';
-import type { ProjectManifest } from '../shared/contracts.js';
+import type { MenuCommand, ProjectManifest } from '../shared/contracts.js';
 
 let win: BrowserWindow | null = null;
 let rendererReady = false;
@@ -33,7 +33,10 @@ function createWindow() {
     icon: path.join(__dirname, '../renderer/assets/icon.png'),
     width: 1200,
     height: 800,
-    webPreferences: { preload: path.join(__dirname, '../preload/preload.js') },
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/preload.js'),
+      devTools: !app.isPackaged,
+    },
   });
 
   if (profile) win.on('page-title-updated', (event) => event.preventDefault());
@@ -232,7 +235,10 @@ ipcMain.handle('workspace:save-file', async (event, input: unknown) => {
 async function projectIdentityKey() {
   const location = path.join(userData, 'project-identity-key');
   try {
-    await writeFile(location, randomBytes(32), { flag: 'wx', mode: 0o600 });
+    await writeFile(location, randomBytes(32), {
+      flag: 'wx',
+      mode: 0o600,
+    });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
   }
@@ -464,6 +470,22 @@ app.on('second-instance', (_event, argv) => {
   }
 });
 
+function menuCommand(
+  label: string,
+  command: MenuCommand,
+  accelerator?: string,
+): Electron.MenuItemConstructorOptions {
+  return {
+    label,
+    ...(accelerator ? { accelerator } : {}),
+    click: () => {
+      if (win && rendererReady) {
+        win.webContents.send('menu:command', command);
+      }
+    },
+  };
+}
+
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('ready', () => {
@@ -475,16 +497,43 @@ else {
         {
           label: 'File',
           submenu: [
-            {
-              label: 'Create Room',
-              accelerator: 'CmdOrCtrl+N',
-              click: () => win?.webContents.send('menu:create-room'),
-            },
+            menuCommand('Create Room…', 'create-room', 'CmdOrCtrl+N'),
+            menuCommand('Join Room…', 'join-room'),
+            menuCommand('Saved Sessions…', 'saved-sessions'),
+            { type: 'separator' },
+            menuCommand('Open Shared File…', 'files', 'CmdOrCtrl+P'),
+            menuCommand('Share Project…', 'share'),
+            { type: 'separator' },
+            menuCommand('Save to Project', 'save', 'CmdOrCtrl+S'),
+            menuCommand('Save File Copy…', 'copy'),
+            { type: 'separator' },
             { role: 'close' },
           ],
         },
         { role: 'editMenu' },
-        { role: 'viewMenu' },
+        {
+          label: 'View',
+          submenu: [
+            menuCommand('Command Palette…', 'commands', 'CmdOrCtrl+Shift+P'),
+            menuCommand('Show Files', 'file-panel'),
+            menuCommand('Show Problem', 'problem'),
+            menuCommand('Open Terminal', 'terminal', 'Ctrl+`'),
+            { type: 'separator' },
+            { role: 'resetZoom' },
+            { role: 'zoomIn' },
+            { role: 'zoomOut' },
+            { type: 'separator' },
+            { role: 'togglefullscreen' },
+            ...(!app.isPackaged
+              ? ([
+                  { type: 'separator' },
+                  { role: 'reload' },
+                  { role: 'forceReload' },
+                  { role: 'toggleDevTools' },
+                ] satisfies Electron.MenuItemConstructorOptions[])
+              : []),
+          ],
+        },
         { role: 'windowMenu' },
       ]),
     );

@@ -900,6 +900,28 @@ const navigation = initializeNavigation(
     $('room-notice').textContent = message;
   },
 );
+window.api.onMenuCommand((id) => {
+  if (document.querySelector('dialog[open]')) return;
+
+  if (id === 'create-room' || id === 'join-room' || id === 'saved-sessions') {
+    showJoin(
+      id === 'create-room' ? 'create' : id === 'join-room' ? 'join' : 'resume',
+    );
+    return;
+  }
+
+  if ($('workspace').inert) return;
+
+  const command = commands.find((item) => item.id === id);
+
+  if (!command?.available()) {
+    $('room-notice').textContent =
+      'This action is not available in the current session.';
+    return;
+  }
+
+  command.run();
+});
 const commandsButton = document.createElement('button');
 commandsButton.className = 'editor-command-button';
 commandsButton.id = 'open-commands';
