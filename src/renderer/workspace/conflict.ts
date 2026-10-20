@@ -34,6 +34,12 @@ export function showDiskConflict(
 
       const help = document.createElement('p');
 
+      const legend = document.createElement('p');
+
+      legend.className = 'disk-diff-legend';
+      legend.textContent =
+        'Room → Disk · − Red: removed from the room version · + Green: added on disk';
+
       help.textContent =
         'Keep disk version brings the reviewed file into the shared session, automatically saving the previous room version in History & checkpoints. Keep room version preserves shared edits; use Save to project when ready to write them to disk.';
 
@@ -83,8 +89,8 @@ export function showDiskConflict(
         disposeDiff();
         disposeDiff = renderFileDiff(
           view,
-          { code: latest.content, language: file.language },
           { code: room, language: file.language },
+          { code: latest.content, language: file.language },
         );
         status.textContent =
           'Snapshot comparison. Refresh after editing or merging externally.';
@@ -152,7 +158,7 @@ export function showDiskConflict(
           keep.disabled =
             busy || !review;
       }
-      dialog.append(heading, help, view, status, actions, tools);
+      dialog.append(heading, help, legend, view, status, actions, tools);
       container.append(dialog);
       void refresh()
         .catch((error) => {

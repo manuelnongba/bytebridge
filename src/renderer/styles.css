@@ -1552,3 +1552,7 @@ select option {
   color: var(--accent);
   background: var(--selected-surface);
 }
+.disk-diff-legend {
+  color: var(--muted);
+  font-size: var(--type-small);
+}
