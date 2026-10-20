@@ -122,30 +122,69 @@
   height: var(--panel-size);
 }
 #panel-resizer {
-  flex: 0 0 14px;
+  flex: 0 0 16px;
   align-self: stretch;
   cursor: col-resize;
   touch-action: none;
   position: relative;
-  border-radius: 5px;
 }
-#panel-resizer::after {
+#panel-resizer::before {
   content: '';
   position: absolute;
-  inset: 35% 5px;
-  border-radius: 3px;
-  background: var(--muted);
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 0.5px);
+  width: 1px;
+  background: var(--control-border);
+}
+#panel-resizer::after {
+  content: '↔';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 28px;
+  border: 1px solid var(--control-border);
+  border-radius: 4px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 1;
 }
 .stacked-panels #panel-resizer {
   cursor: row-resize;
 }
-.stacked-panels #panel-resizer::after {
-  inset: 5px 35%;
+.stacked-panels #panel-resizer::before {
+  top: calc(50% - 0.5px);
+  bottom: auto;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: 1px;
 }
-#panel-resizer:hover,
+.stacked-panels #panel-resizer::after {
+  content: '↕';
+  width: 28px;
+  height: 16px;
+}
+#panel-resizer:hover::before,
+#panel-resizer:focus-visible::before,
+.panel-dragging #panel-resizer::before {
+  background: var(--accent);
+}
+#panel-resizer:hover::after,
+#panel-resizer:focus-visible::after,
+.panel-dragging #panel-resizer::after {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--selected-surface);
+}
 #panel-resizer:focus-visible {
-  background: var(--hover);
-  outline: 1px solid var(--accent);
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 .panel-dragging,
 .panel-dragging * {
