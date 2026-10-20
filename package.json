@@ -1,13 +1,16 @@
 {
   "name": "bytebridge",
-  "version": "1.0.0",
+  "version": "1.0.0-beta.1",
   "description": "A shared workspace for collaborative coding and debugging",
   "main": "dist/main/main.js",
   "build": {
     "appId": "app.bytebridge.desktop",
     "productName": "ByteBridge",
     "files": [
-      "dist/**/*",
+      "dist/main/**/*",
+      "dist/preload/**/*",
+      "dist/renderer/**/*",
+      "dist/shared/**/*",
       "package.json"
     ],
     "mac": {
