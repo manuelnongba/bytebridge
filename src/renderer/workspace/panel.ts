@@ -366,7 +366,6 @@ export function initializeWorkspace(
 
   const projectActions = document.createElement('div');
   const fileActions = document.createElement('div');
-  const fileScope = document.createElement('span');
   const fileButtons = document.createElement('div');
 
   actions.className = 'files-actions';
@@ -376,7 +375,6 @@ export function initializeWorkspace(
   fileActions.className = 'files-current-actions';
   fileActions.setAttribute('role', 'group');
   fileActions.setAttribute('aria-label', 'Current file actions');
-  fileScope.className = 'files-action-scope';
   fileButtons.className = 'files-action-buttons';
   pick.title = 'Choose a local folder to share with this room';
   stop.title =
@@ -391,7 +389,7 @@ export function initializeWorkspace(
   setButtonVariant(copy, 'secondary');
   projectActions.append(pick, stop);
   fileButtons.append(save, copy);
-  fileActions.append(fileScope, fileButtons);
+  fileActions.append(fileButtons);
   actions.append(projectActions, fileActions);
   panel.replaceChildren(
     close,
@@ -525,10 +523,6 @@ export function initializeWorkspace(
     save.hidden = !hosting.local.has(current.projectId || '');
     save.disabled = denied || saving || !current.text || editor.isReviewing();
     copy.disabled = editor.isReviewing();
-    fileScope.textContent = editor.isReviewing()
-      ? 'File actions unavailable during review'
-      : `Current file · ${current.path}`;
-    fileScope.title = fileScope.textContent;
     conflict.hidden = true;
     conflict.disabled = denied || saving || !current.text;
 

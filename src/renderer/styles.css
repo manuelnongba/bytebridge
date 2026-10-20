@@ -1756,15 +1756,7 @@ details[open] > .folder-heading::before {
   padding-top: 8px;
   border-top: 1px solid var(--control-border);
 }
-.files-action-scope {
-  display: block;
-  margin-bottom: 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-  font-size: var(--type-small);
-}
+
 .files-action-buttons #save-project-file {
   flex: 1;
 }
