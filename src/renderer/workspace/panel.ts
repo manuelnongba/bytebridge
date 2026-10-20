@@ -1,3 +1,4 @@
+import { initializeTerminalPanel } from '../terminal/panel.js';
 import type * as Y from 'yjs';
 import type { RoomProvider, WorkspaceEditor } from '../../shared/contracts.js';
 import { element, errorMessage, setButtonVariant } from '../ui/dom.js';
@@ -43,6 +44,7 @@ export function initializeWorkspace(
   let pendingOfflineFile: string | null = null;
   const rememberedProjects = new Set<string>();
   let knownProjects = new Set<string>();
+  let terminal: ReturnType<typeof initializeTerminalPanel> | undefined;
   let closeConflict = () => {};
   let renderedDiskChanges = '';
   const persist = () => {
@@ -299,6 +301,30 @@ export function initializeWorkspace(
 
   const hosting = createHosting(doc, provider, config, window.api, render);
 
+  terminal = initializeTerminalPanel({
+    projects: () =>
+      [...hosting.local.values()].map(({ id, name }) => ({ id, name })),
+    blocked: (projectId) => {
+      if (!alive || denied || !provider.synced)
+        return 'Connect to the room with edit access to open a terminal.';
+      if (!hosting.local.has(projectId))
+        return 'Share a local project to open a terminal.';
+      if (loading || saving)
+        return 'Wait for the current file operation to finish.';
+      if (hosting.diskCheckError) return hosting.diskCheckError;
+      const files = workspaceFiles(doc).filter(
+        (file) => file.projectId === projectId && file.text,
+      );
+
+      if (files.some((file) => hosting.diskChanges.has(file.id)))
+        return 'Review disk changes before opening a terminal.';
+      if (files.some((file) => hosting.isDirty(file)))
+        return 'Save your shared edits to the project before opening a terminal.';
+      return '';
+    },
+    checkDisk: () => hosting.checkDisk(),
+  });
+
   async function open(id: string) {
     const token = ++selection;
     let file = workspaceFiles(doc).find((item) => item.id === id);
@@ -342,6 +368,8 @@ export function initializeWorkspace(
 
   function render() {
     if (!alive) return;
+
+    terminal?.refresh();
 
     const files = workspaceFiles(doc);
 
@@ -778,6 +806,7 @@ export function initializeWorkspace(
     closeConflict();
     alive = false;
     provider.off('sync', restore);
+    terminal?.dispose();
     hosting.dispose();
     provider.off('sync', render);
     provider.off('status', render);

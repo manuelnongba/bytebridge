@@ -1,3 +1,4 @@
+import type { TerminalEvent, TerminalStart } from './terminal.js';
 import type * as Y from 'yjs';
 import type { WebsocketProvider } from 'y-websocket';
 
@@ -17,6 +18,12 @@ export interface ProjectManifest {
 }
 
 export interface NativeAPI {
+  startTerminal(input: TerminalStart): Promise<void>;
+  stopTerminal(id: string): Promise<void>;
+  writeTerminal(id: string, data: string): Promise<void>;
+  resizeTerminal(id: string, cols: number, rows: number): Promise<void>;
+  acknowledgeTerminal(id: string, size: number): Promise<void>;
+  onTerminalEvent(callback: (event: TerminalEvent) => void): () => void;
   ready(): Promise<string | null>;
   openProject(
     expectedProjectId?: string,

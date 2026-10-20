@@ -12,7 +12,7 @@ A collaborative desktop code editor for debugging together, built with Electron.
 
 ## Get started
 
-Requires Node.js 22 and npm.
+Requires Node.js 22 and npm. Installation rebuilds native terminal dependencies for Electron; building them from source requires the platform’s C++ build tools.
 
 ```sh
 npm ci
@@ -47,6 +47,12 @@ When loaded files in a project you host change on disk, **Files** shows a change
 Use **Problem → Edit problem** to describe the issue and add supporting details, then **Save & share problem**. Save checkpoints as you investigate and mark the problem solved when finished.
 
 Choose sharing scope carefully: file names and requested contents become available to the room. Ignore rules exclude common sensitive and generated files, but are not a secret scanner. Stopping hosting or removing a shared project does not erase earlier copies or checkpoints; removing a project leaves disk files intact.
+
+## Local terminal
+
+Click **Terminal** in the bottom bar or press **Ctrl + Backtick** to open a shell in a project you host. You can also use **Open terminal** in Commands. Run your preferred installed coding tool (such as `codex` or `claude`), using its own sign-in and model settings. Save or review existing shared changes before opening the shell.
+
+The terminal is private to your window and runs with your normal local permissions. Closing the panel, leaving the room, or stopping hosting ends the shell. Choose **Review changes** to bring disk edits into the room. New files must be opened separately.
 
 ## Optional AI catch-up
 

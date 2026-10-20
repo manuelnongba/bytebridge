@@ -2,6 +2,7 @@ import { element } from './dom.js';
 
 const panels: Record<string, string> = {
   'files-panel': 'open-files',
+  'terminal-panel': 'open-terminal',
   'debug-context': 'open-context',
   'access-panel': 'manage-invites',
 };
@@ -9,15 +10,19 @@ const panels: Record<string, string> = {
 export function closePanel(id: string) {
   const panel = element(id);
 
+  const wasOpen = !panel.hidden;
+
   panel.hidden = true;
-  panel.dispatchEvent(new Event('panel-closed'));
+  if (wasOpen) panel.dispatchEvent(new Event('panel-closed'));
   document
     .getElementById(panels[id] || '')
     ?.setAttribute('aria-expanded', 'false');
 }
 
 export function openPanel(id: string) {
-  for (const other of Object.keys(panels)) if (other !== id) closePanel(other);
+  if (id !== 'terminal-panel')
+    for (const other of Object.keys(panels))
+      if (other !== id && other !== 'terminal-panel') closePanel(other);
 
   element(id).hidden = false;
   document

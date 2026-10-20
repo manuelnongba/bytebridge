@@ -1,7 +1,23 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { TerminalEvent } from '../shared/terminal.js';
 import type { NativeAPI } from '../shared/contracts.js';
 
 const api: NativeAPI = {
+  startTerminal: (input) => ipcRenderer.invoke('terminal:start', input),
+  stopTerminal: (id) => ipcRenderer.invoke('terminal:stop', id),
+  writeTerminal: (id, data) => ipcRenderer.invoke('terminal:write', id, data),
+  resizeTerminal: (id, cols, rows) =>
+    ipcRenderer.invoke('terminal:resize', id, cols, rows),
+  acknowledgeTerminal: (id, size) =>
+    ipcRenderer.invoke('terminal:ack', id, size),
+  onTerminalEvent: (callback) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      value: TerminalEvent,
+    ) => callback(value);
+    ipcRenderer.on('terminal:event', listener);
+    return () => ipcRenderer.removeListener('terminal:event', listener);
+  },
   ready: () => ipcRenderer.invoke('renderer:ready'),
   openProject: (expectedProjectId, scope) =>
     ipcRenderer.invoke('project:open', expectedProjectId, scope),

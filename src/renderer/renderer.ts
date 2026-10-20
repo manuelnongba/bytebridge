@@ -811,7 +811,24 @@ const buttonAvailable = (id: string) => {
   return roomAvailable() && !!button && !button.hidden && !button.disabled;
 };
 const shortcuts = APP_CONFIG.navigation.shortcuts;
+document
+  .getElementById('open-terminal')
+  ?.setAttribute(
+    'title',
+    `Open terminal (${shortcuts.terminal}); click again to close and end the shell`,
+  );
 const commands: Command[] = [
+  {
+    id: 'terminal',
+    label: 'Open terminal',
+    group: 'Workspace',
+    shortcut: shortcuts.terminal,
+    available: () => buttonAvailable('open-terminal'),
+    run: () =>
+      document
+        .getElementById('open-terminal')
+        ?.dispatchEvent(new Event('terminal-open')),
+  },
   {
     id: 'ai-catch-up',
     label: 'Catch me up',

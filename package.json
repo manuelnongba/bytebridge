@@ -25,7 +25,10 @@
     "directories": {
       "buildResources": "assets/branding",
       "output": "release"
-    }
+    },
+    "asarUnpack": [
+      "node_modules/node-pty/**/*"
+    ]
   },
   "scripts": {
     "format": "prettier --write .",
@@ -48,7 +51,8 @@
     "cloudflare:typecheck": "tsc -p cloudflare/tsconfig.json",
     "cloudflare:build": "wrangler deploy --dry-run --config cloudflare/wrangler.jsonc --outdir ../dist/cloudflare",
     "cloudflare:deploy": "wrangler deploy --config cloudflare/wrangler.jsonc",
-    "build:release": "npm run build:types && webpack --mode production --config webpack.config.js && npm run build:main"
+    "build:release": "npm run build:types && webpack --mode production --config webpack.config.js && npm run build:main",
+    "postinstall": "electron-builder install-app-deps"
   },
   "keywords": [],
   "author": "",
@@ -71,10 +75,13 @@
   },
   "type": "module",
   "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "@y/websocket-server": "^0.1.1",
     "ignore": "^7.0.12",
     "lib0": "^0.2.119",
     "monaco-editor": "^0.53.0",
+    "node-pty": "^1.1.0",
     "ws": "^8.22.0",
     "y-monaco": "^0.1.6",
     "y-protocols": "^1.0.7",

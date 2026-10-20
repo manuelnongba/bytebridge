@@ -127,6 +127,7 @@
           <div id="editor"></div>
         </section>
       </div>
+      <aside id="terminal-panel" aria-label="Local terminal" hidden></aside>
       <footer class="status-bar">
         <span id="connection-status" data-state="idle" role="status"
           >Not connected</span
@@ -137,6 +138,15 @@
           aria-live="polite"
         ></p>
         <span id="local-user">Ready when you are</span>
+        <button
+          id="open-terminal"
+          class="button ghost"
+          aria-controls="terminal-panel"
+          aria-expanded="false"
+          hidden
+        >
+          <span aria-hidden="true">›_</span> Terminal
+        </button>
       </footer>
     </main>
     <div id="name-modal" class="modal">

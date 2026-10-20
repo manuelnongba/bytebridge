@@ -22,6 +22,7 @@ export const APP_CONFIG = {
       files: 'Mod+p',
       attach: 'Mod+Shift+a',
       save: 'Mod+s',
+      terminal: 'Ctrl+`',
     },
     hiddenCommands: [] as string[],
   },

@@ -1,3 +1,5 @@
+import { LocalTerminal } from './terminal.js';
+import type { TerminalStart } from '../shared/terminal.js';
 import { app, BrowserWindow, clipboard, ipcMain, Menu, dialog } from 'electron';
 import path from 'path';
 import { randomBytes } from 'node:crypto';
@@ -117,6 +119,8 @@ ipcMain.handle('export:markdown', async (event, content: unknown) => {
 });
 
 let importingFolder = false;
+const terminals = new Map<number, LocalTerminal>();
+
 const projects = new Map<number, Map<string, LocalProject>>();
 
 function trustedProjectSender(event: Electron.IpcMainInvokeEvent) {
@@ -134,6 +138,9 @@ function trustedProjectSender(event: Electron.IpcMainInvokeEvent) {
     projects.set(event.sender.id, owned);
 
     const cleanup = () => {
+      terminals.get(event.sender.id)?.stop();
+      terminals.delete(event.sender.id);
+
       for (const project of owned!.values()) project.close();
 
       owned!.clear();
@@ -410,6 +417,11 @@ for (const operation of [
       if (!project) throw new Error('This window does not host that project.');
 
       if (operation === 'close') {
+        if (terminals.get(event.sender.id)?.projectId === projectId) {
+          terminals.get(event.sender.id)?.stop();
+          terminals.delete(event.sender.id);
+        }
+
         project.close();
         owned.delete(projectId);
 
@@ -487,4 +499,96 @@ app.on('window-all-closed', () => {
 });
 app.on('activate', () => {
   if (!win) createWindow();
+});
+
+function terminalSize(cols: number, rows: number) {
+  return (
+    Number.isInteger(cols) &&
+    Number.isInteger(rows) &&
+    cols >= 2 &&
+    cols <= 500 &&
+    rows >= 1 &&
+    rows <= 300
+  );
+}
+
+ipcMain.handle('terminal:start', (event, input: TerminalStart) => {
+  const owned = trustedProjectSender(event);
+
+  if (
+    !input ||
+    typeof input.id !== 'string' ||
+    !/^[a-f0-9-]{36}$/.test(input.id) ||
+    !terminalSize(input.cols, input.rows)
+  )
+    throw new Error('Invalid terminal request.');
+
+  const project = owned.get(input.projectId);
+
+  if (!project) throw new Error('Choose a project you host.');
+
+  terminals.get(event.sender.id)?.stop();
+  terminals.delete(event.sender.id);
+
+  try {
+    const terminal = new LocalTerminal(input, project.root, (message) => {
+      if (!event.sender.isDestroyed())
+        event.sender.send('terminal:event', message);
+    });
+    terminals.set(event.sender.id, terminal);
+  } catch {
+    throw new Error(
+      'The terminal could not start. Restart ByteBridge and try again.',
+    );
+  }
+});
+
+ipcMain.handle('terminal:stop', (event, id: string) => {
+  trustedProjectSender(event);
+  const terminal = terminals.get(event.sender.id);
+
+  if (terminal?.id !== id) return;
+
+  terminal.stop();
+  terminals.delete(event.sender.id);
+});
+
+ipcMain.handle('terminal:write', (event, id: string, data: string) => {
+  const owned = trustedProjectSender(event);
+  const terminal = terminals.get(event.sender.id);
+
+  if (terminal?.id !== id || !owned.has(terminal.projectId)) return;
+  if (typeof data !== 'string' || data.length > 65536)
+    throw new Error('Terminal input is too large.');
+
+  terminal.write(data);
+});
+
+ipcMain.handle(
+  'terminal:resize',
+  (event, id: string, cols: number, rows: number) => {
+    trustedProjectSender(event);
+    const terminal = terminals.get(event.sender.id);
+
+    if (terminal?.id === id && terminalSize(cols, rows))
+      terminal.resize(cols, rows);
+  },
+);
+
+ipcMain.handle('terminal:ack', (event, id: string, size: number) => {
+  trustedProjectSender(event);
+  const terminal = terminals.get(event.sender.id);
+
+  if (
+    terminal?.id === id &&
+    Number.isInteger(size) &&
+    size > 0 &&
+    size <= 8 * 1024 * 1024
+  )
+    terminal.acknowledge(size);
+});
+
+app.on('before-quit', () => {
+  for (const terminal of terminals.values()) terminal.stop();
+  terminals.clear();
 });

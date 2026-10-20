@@ -43,7 +43,8 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: string) {
     event.shiftKey === parts.includes('shift') &&
     event.altKey === parts.includes('alt') &&
     event.metaKey === (parts.includes('mod') && mac) &&
-    event.ctrlKey === (parts.includes('mod') && !mac)
+    event.ctrlKey ===
+      (parts.includes('ctrl') || (parts.includes('mod') && !mac))
   );
 }
 
@@ -176,6 +177,9 @@ export function initializeNavigation(
     'keydown',
     (event) => {
       if (
+        (event.target instanceof Element &&
+          !!event.target.closest('.terminal-surface') &&
+          !matchesShortcut(event, config.shortcuts.terminal)) ||
         !config.enabled ||
         event.isComposing ||
         event.repeat ||
